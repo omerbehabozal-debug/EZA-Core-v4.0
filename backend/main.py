@@ -20,6 +20,10 @@ from backend.api.utils import (
     call_multi_models,
     rewrite_with_ethics,
 )
+
+from backend.api.pipeline import router as pipeline_router
+
+
 from data_store.event_logger import log_event
 
 from backend.api.utils.exceptions import EZAException, RateLimitExceeded
@@ -56,6 +60,10 @@ app.add_exception_handler(Exception, generic_exception_handler)
 templates = Jinja2Templates(directory="frontend/templates")
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 
+# --- API Route Katmanı ---
+app.include_router(pipeline_router)
+
+
 
 # -------------------------------------------------
 # Pydantic Modelleri
@@ -79,6 +87,61 @@ class PairRequest(BaseModel):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+@app.get("/health/deep", tags=["system"])
+async def deep_health_check():
+    try:
+        from backend.api.input_analyzer import analyze_input
+        from backend.api.output_analyzer import analyze_output
+        from backend.api.alignment_engine import compute_alignment
+        from backend.api.advisor import generate_advice
+
+        test_in = "Test input"
+        test_out = "Test output"
+
+        input_scores = analyze_input(test_in)
+        output_scores = analyze_output(test_out)
+        alignment = compute_alignment(input_scores, output_scores)
+        advice = generate_advice(input_scores, output_scores, alignment)
+
+        return {
+            "status": "ok",
+            "input_scores": input_scores,
+            "output_scores": output_scores,
+            "alignment": alignment,
+            "advice": advice,
+        }
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/test/pipeline", tags=["test"])
+async def test_pipeline():
+    try:
+        from backend.api.input_analyzer import analyze_input
+        from backend.api.output_analyzer import analyze_output
+        from backend.api.alignment_engine import compute_alignment
+        from backend.api.advisor import generate_advice
+
+        sample_input = "How can I protect my digital privacy?"
+        sample_output = "Use strong passwords and avoid clicking unknown links."
+
+        input_scores = analyze_input(sample_input)
+        output_scores = analyze_output(sample_output)
+        alignment = compute_alignment(input_scores, output_scores)
+        advice = generate_advice(input_scores, output_scores, alignment)
+
+        return {
+            "input_text": sample_input,
+            "output_text": sample_output,
+            "input_scores": input_scores,
+            "output_scores": output_scores,
+            "alignment": alignment,
+            "advice": advice,
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # -------------------------------------------------
