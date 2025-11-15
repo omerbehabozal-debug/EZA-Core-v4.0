@@ -1,71 +1,30 @@
 """
-EZA-Core v4.0
-Event Logger
-----------------
-Bu modül, input-output analiz döngüsünde oluşan tüm olayları kaydeder.
-Şu an için JSON dosyasına loglama yapılır.
-Daha sonra PostgreSQL / Supabase entegrasyonu kolayca eklenebilir.
+Supabase Event Logger
+EZA-Core v4.0 – global logging system
 """
 
-import json
-import os
 from datetime import datetime
 from typing import Dict, Any
+from backend.infra.supabase_client import insert_event
 
 
-LOG_DIR = "logs"
-LOG_FILE = os.path.join(LOG_DIR, "events.jsonl")  # JSON Lines formatı
+EVENT_TABLE = "eza_events"   # Supabase içinde tablo adı
 
 
-# -------------------------------------------------------------------
-# Yardımcı
-# -------------------------------------------------------------------
+def log_event(event_type: str, payload: Dict[str, Any]):
+    timestamp = datetime.utcnow().isoformat()
 
-def _ensure_log_dir():
-    """logs/ klasörü yoksa oluşturur."""
-    if not os.path.exists(LOG_DIR):
-        os.makedirs(LOG_DIR)
-
-
-# -------------------------------------------------------------------
-# Ana Log Fonksiyonu
-# -------------------------------------------------------------------
-
-def log_event(event: Dict[str, Any]) -> None:
-    """
-    EZA analiz zincirinin her aşamasını loglar.
-
-    event {
-        "timestamp": "...",
-        "query": "...",
-        "models_used": [...],
-        "input_scores": {...},
-        "model_outputs": {...},
-        "output_scores": {...},
-        "alignment_score": 0.78,
-        "advice": "...",
-        "rewritten_text": "..."
+    data = {
+        "event_type": event_type,
+        "timestamp": timestamp,
+        "payload": payload
     }
-    """
 
-    _ensure_log_dir()
+    # Supabase'e yaz
+    insert_event(EVENT_TABLE, data)
 
-    # Zaman damgası ekle
-    event["timestamp"] = datetime.utcnow().isoformat()
-
-    # JSON Lines formatında yaz
-    with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(event, ensure_ascii=False))
-        f.write("\n")
-
-
-# -------------------------------------------------------------------
-# Gelecekte Kullanılacak: Supabase / PostgreSQL eklentisi
-# -------------------------------------------------------------------
-
-def log_event_to_db(event: Dict[str, Any]):
-    """
-    İleride Supabase veya PostgreSQL eklemek istediğimizde bu fonksiyon aktif olacak.
-    Şu an doldurulmadan bırakıyoruz.
-    """
-    pass
+    return {
+        "status": "ok",
+        "timestamp": timestamp,
+        "stored_in": "supabase"
+    }
