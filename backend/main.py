@@ -22,8 +22,36 @@ from backend.api.utils import (
 )
 from data_store.event_logger import log_event
 
+from backend.api.utils.exceptions import EZAException, RateLimitExceeded
+
+
+from backend.middleware.request_logger import RequestLoggerMiddleware
+from backend.middleware.normalize_middleware import NormalizeMiddleware
+from backend.middleware.rate_limit_middleware import RateLimitMiddleware
+from backend.middleware.circuit_breaker import CircuitBreakerMiddleware
+from backend.middleware.error_handler import (
+    eza_exception_handler,
+    rate_limit_handler,
+    generic_exception_handler
+)
+
+
+
 
 app = FastAPI(title="EZA-Core v4.0")
+
+# --- Middleware Katmanı ---
+app.add_middleware(RequestLoggerMiddleware)
+app.add_middleware(NormalizeMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(CircuitBreakerMiddleware)
+
+# --- Exception Handler Katmanı ---
+app.add_exception_handler(EZAException, eza_exception_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
+
+
 
 templates = Jinja2Templates(directory="frontend/templates")
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
