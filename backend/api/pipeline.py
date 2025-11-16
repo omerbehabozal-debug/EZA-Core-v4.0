@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -41,26 +42,30 @@ async def run_pipeline(request: PipelineRequest):
 
     try:
         # 1) INPUT ANALYSIS -----------------------------------------
-        input_info = analyze_input(request.text)
+        input_info = analyze_input(request.text, query=request.query)
 
-        # 2) OUTPUT ANALYSIS ----------------------------------------
+        # 2) MODEL OUTPUT + OUTPUT ANALYSIS -------------------------
+        # Önce model çıktısını al
+        from backend.api.utils.model_runner import call_single_model
+        model_output = call_single_model(text=request.text, model_name=request.model)
+        
+        # Sonra çıktıyı analiz et
         output_info = analyze_output(
-            text=request.text,
-            model=request.model,
-            query=request.query
+            output_text=model_output,
+            model=request.model
         )
 
         # 3) ALIGNMENT ENGINE ---------------------------------------
         alignment = compute_alignment(
-            output_info=output_info,
-            input_info=input_info
+            input_analysis=input_info,
+            output_analysis=output_info
         )
 
         # 4) ADVISOR -------------------------------------------------
         final_advice = generate_advice(
-            alignment=alignment,
-            input_info=input_info,
-            output_info=output_info
+            input_analysis=input_info,
+            output_analysis=output_info,
+            alignment_result=alignment
         )
 
         # 5) EVENT LOGGING (opsiyonel)

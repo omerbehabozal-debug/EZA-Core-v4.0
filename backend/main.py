@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 EZA-Core v4.0
 Ana FastAPI Uygulaması
@@ -15,7 +16,7 @@ from backend.api.input_analyzer import analyze_input
 from backend.api.output_analyzer import analyze_output, evaluate_output
 from backend.api.alignment_engine import compute_alignment
 from backend.api.advisor import generate_advice
-from backend.api.utils import (
+from backend.api.utils.model_runner import (
     call_single_model,
     call_multi_models,
     rewrite_with_ethics,
@@ -176,19 +177,27 @@ async def analyze(req: AnalyzeRequest):
         model_outputs = {model: out}
 
     # 3) Output analizi (çoklu model ortalaması)
-    output_scores: Dict[str, Any] = analyze_output(model_outputs)
+    # Her model çıktısı için ayrı ayrı analiz yap
+    output_analyses = {}
+    for model_name, output_text in model_outputs.items():
+        output_analyses[model_name] = analyze_output(output_text, model=model_name)
+    
+    # İlk modelin analizini ana output_scores olarak kullan (veya birleştirilmiş analiz)
+    output_scores = output_analyses[list(model_outputs.keys())[0]]
 
     # 4) Alignment hesabı
-    alignment_score, alignment_label = compute_alignment(
-        input_scores=input_scores,
-        output_scores=output_scores,
+    alignment_result = compute_alignment(
+        input_analysis=input_scores,
+        output_analysis=output_scores,
     )
+    alignment_score = alignment_result.get("alignment_score", 0)
+    alignment_label = alignment_result.get("verdict", "unknown")
 
     # 5) EZA tavsiyesi
     advice = generate_advice(
-        input_scores=input_scores,
-        output_scores=output_scores,
-        alignment_score=alignment_score,
+        input_analysis=input_scores,
+        output_analysis=output_scores,
+        alignment_result=alignment_result,
     )
 
     # 6) Etik olarak güçlendirilmiş cevap
@@ -196,9 +205,21 @@ async def analyze(req: AnalyzeRequest):
     base_model_key = "chatgpt"
     if base_model_key not in model_outputs:
         base_model_key = list(model_outputs.keys())[0]
+    
+    # advice dict'inden string çıkar
+    advice_text = ""
+    if isinstance(advice, dict) and advice.get("ok"):
+        advice_dict = advice.get("advice", {})
+        if isinstance(advice_dict, dict):
+            advice_text = advice_dict.get("user_message", "") or str(advice_dict)
+        else:
+            advice_text = str(advice_dict)
+    else:
+        advice_text = str(advice)
+    
     rewritten = rewrite_with_ethics(
         text=model_outputs[base_model_key],
-        advice=advice,
+        advice=advice_text,
         model_name=base_model_key,
     )
 
@@ -212,6 +233,7 @@ async def analyze(req: AnalyzeRequest):
             "output_scores": output_scores,
             "alignment_score": alignment_score,
             "alignment_label": alignment_label,
+            "alignment_result": alignment_result,
             "advice": advice,
             "rewritten_text": rewritten,
         }
@@ -220,15 +242,17 @@ async def analyze(req: AnalyzeRequest):
     # 8) Response
     #    - testler için: language, intents, risk_level top-level
     #    - frontend için: input_scores, model_outputs, output_scores...
+    input_analysis = input_scores.get("analysis", {})
     return {
-        "language": input_scores.get("language"),
-        "intents": input_scores.get("intents"),
-        "risk_level": input_scores.get("risk_level"),
+        "language": input_analysis.get("language"),  # analysis içinden
+        "intents": input_analysis.get("intent"),  # "intent" tek, "intents" değil
+        "risk_level": "high" if input_analysis.get("risk_flags") else "low",  # risk_flags'den türet
         "input_scores": input_scores,
         "model_outputs": model_outputs,
         "output_scores": output_scores,
         "alignment_score": alignment_score,
         "alignment_label": alignment_label,
+        "alignment_result": alignment_result,
         "advice": advice,
         "rewritten_text": rewritten,
     }
@@ -243,16 +267,16 @@ async def analyze(req: AnalyzeRequest):
 @app.post("/pair")
 async def pair(req: PairRequest):
     input_scores = analyze_input(req.input_text)
-    output_scores = evaluate_output(req.output_text, req.input_text)
+    output_scores = evaluate_output(req.output_text)
 
-    alignment_score, alignment_label = compute_alignment(
-        input_scores=input_scores,
-        output_scores=output_scores,
+    alignment_result = compute_alignment(
+        input_analysis=input_scores,
+        output_analysis=output_scores,
     )
 
     return {
-        "alignment_score": alignment_score,
-        "alignment_label": alignment_label,
+        "alignment_score": alignment_result.get("alignment_score", 0),
+        "alignment_label": alignment_result.get("verdict", "unknown"),
     }
 
 

@@ -1,16 +1,11 @@
-// ---------------------------------------------------------------
-// EZA-Core v4.0 – Frontend JS
-// API ile iletişim, sonuçların işlenmesi ve ekrana yansıtılması
-// ---------------------------------------------------------------
-
 document.addEventListener("DOMContentLoaded", () => {
 
     const analyzeBtn = document.getElementById("analyzeBtn");
-    const userInput = document.getElementById("userInput");
-    const modelSelect = document.getElementById("modelSelect");
-
     const loadingBox = document.getElementById("loading");
     const resultBox = document.getElementById("result");
+
+    const userInput = document.getElementById("userInput");
+    const modelSelect = document.getElementById("modelSelect");
 
     const modelOutputs = document.getElementById("modelOutputs");
     const inputScores = document.getElementById("inputScores");
@@ -19,20 +14,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const adviceText = document.getElementById("adviceText");
     const rewrittenText = document.getElementById("rewrittenText");
 
-    // -----------------------------------------
-    // ANALİZ ET BUTONU
-    // -----------------------------------------
-    analyzeBtn.addEventListener("click", async () => {
-
-        const query = userInput.value.trim();
+    async function analyze() {
+        const text = userInput.value.trim();
         const model = modelSelect.value;
 
-        if (!query) {
-            alert("Lütfen bir metin yazın.");
+        if (!text) {
+            alert("Lütfen bir metin girin.");
             return;
         }
 
-        // Loading açılır
+        // UI güncelle
         loadingBox.style.display = "block";
         resultBox.style.display = "none";
 
@@ -43,36 +34,34 @@ document.addEventListener("DOMContentLoaded", () => {
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    query: query,
+                    text: text,
+                    query: "",
                     model: model
                 })
             });
 
-            if (!response.ok) {
-                throw new Error("Sunucu hatası");
-            }
-
             const data = await response.json();
 
-            // -----------------------------------------
-            // EKRANA YAZDIR
-            // -----------------------------------------
-            modelOutputs.textContent = JSON.stringify(data.model_outputs, null, 2);
-            inputScores.textContent = JSON.stringify(data.input_scores, null, 2);
-            outputScores.textContent = JSON.stringify(data.output_scores, null, 2);
-            alignmentScore.textContent = JSON.stringify(data.alignment_score, null, 2);
-            adviceText.textContent = data.advice;
-            rewrittenText.textContent = data.rewritten_text;
+            if (!response.ok) {
+                throw new Error(data.error || "Beklenmeyen bir hata oluştu.");
+            }
 
-            // Göster
+            // Pipeline sonuçlarını UI'ya basıyoruz
+            modelOutputs.textContent = JSON.stringify(data.model_outputs || "—", null, 2);
+            inputScores.textContent = JSON.stringify(data.input_scores || "—", null, 2);
+            outputScores.textContent = JSON.stringify(data.output_scores || "—", null, 2);
+            alignmentScore.textContent = JSON.stringify(data.alignment || "—", null, 2);
+            adviceText.textContent = data.advice || "—";
+            rewrittenText.textContent = data.final || "—";
+
             resultBox.style.display = "block";
 
         } catch (err) {
-            alert("Bir hata oluştu: " + err.message);
+            alert("Hata: " + err.message);
         }
 
-        // Loading kapanır
         loadingBox.style.display = "none";
-    });
+    }
 
+    analyzeBtn.addEventListener("click", analyze);
 });
