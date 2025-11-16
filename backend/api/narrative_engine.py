@@ -23,14 +23,16 @@ class NarrativeEngine:
     - Conversation Pattern Detection: Detects communication strategies
     """
     
-    def __init__(self, max_memory: int = 10):
+    def __init__(self, max_memory: int = 20):
         """
         Initialize NarrativeEngine.
         
         Args:
-            max_memory: Maximum number of messages to store in memory
+            max_memory: Maximum number of messages to store in memory (default: 20)
         """
-        self.memory = deque(maxlen=max_memory)
+        self.max_memory = max_memory
+        # Use list instead of deque for simpler implementation
+        self.memory: List[Dict[str, Any]] = []
         # EZA-NarrativeEngine v2.2: Extended history for detailed analysis
         self.history: List[Dict[str, Any]] = []
         self.max_history = 25
@@ -43,7 +45,13 @@ class NarrativeEngine:
             role: Message role ("user" or "assistant")
             text: Message text
         """
+        if not text or not isinstance(text, str):
+            return  # Skip invalid messages
+        
         self.memory.append({"role": role, "text": text})
+        # Memory overflow protection: keep only last max_memory messages
+        if len(self.memory) > self.max_memory:
+            self.memory.pop(0)
     
     def analyze_flow(self) -> Dict[str, Any]:
         """
@@ -362,7 +370,101 @@ class NarrativeEngine:
         """
         return self.analyze_narrative(current_text)
 
-    def analyze(self, text: str) -> Dict[str, Any]:
+    def analyze_conversation(self) -> Dict[str, Any]:
+        """
+        EZA-NarrativeEngine: Analyze entire conversation for multi-turn risks.
+        
+        GOV standard context-drift detection:
+        - Context shift detection
+        - Hidden agenda detection
+        - Pattern drift detection
+        - Intent drift detection
+        - Multi-turn risk detection
+        
+        Returns:
+            {
+                "ok": True,
+                "messages_tracked": int,
+                "patterns": List[str],
+                "drift": List[str],
+                "context_break": bool,
+                "risk_terms": List[str],
+                "safe_terms": List[str],
+                "notes": str
+            }
+        """
+        if not self.memory:
+            return {"ok": True, "notes": "no-context"}
+
+        # Combine all messages into full text (with NoneType protection)
+        full_text = " ".join([
+            str(m.get("text", "")) 
+            for m in self.memory 
+            if m and isinstance(m, dict) and m.get("text")
+        ])
+
+        patterns = []
+        drift = []
+        context_break = False
+
+        # GOV standard context-drift detection
+        risk_terms = ["öldür", "intihar", "kır", "kandır", "yönlendir", "şifre", "hack", "suç"]
+        support_terms = ["yardım", "destek", "bilgi", "danış", "açıkla"]
+
+        full_text_lower = full_text.lower()
+        hits_risk = [t for t in risk_terms if t in full_text_lower]
+        hits_safe = [t for t in support_terms if t in full_text_lower]
+
+        if len(hits_risk) > 3:
+            patterns.append("multi-risk-pattern")
+
+        if len(hits_safe) > 5:
+            patterns.append("supportive-pattern")
+
+        # Basit drift ölçümü
+        if hits_risk and hits_safe:
+            drift.append("mixed-intent")
+
+        # Context kopma (ilk ve son mesajın başlangıcını karşılaştır)
+        if len(self.memory) >= 2:
+            try:
+                last_msg = str(self.memory[-1].get("text", "")) if self.memory[-1] else ""
+                first_msg = str(self.memory[0].get("text", "")) if self.memory[0] else ""
+                if len(last_msg) > 3 and len(first_msg) > 3:
+                    if last_msg[:4].lower() != first_msg[:4].lower():
+                        context_break = True
+            except (IndexError, AttributeError, TypeError):
+                # Skip context break detection if there's an error
+                pass
+
+        return {
+            "ok": True,
+            "messages_tracked": len(self.memory),
+            "patterns": patterns,
+            "drift": drift,
+            "context_break": context_break,
+            "risk_terms": hits_risk,
+            "safe_terms": hits_safe
+        }
+
+    def analyze(self, text: str = None) -> Dict[str, Any]:
+        """
+        EZA NarrativeEngine: Analyze conversation or single text.
+        
+        If text is None, analyzes entire conversation (multi-turn analysis).
+        If text is provided, analyzes single text for context patterns.
+        
+        Args:
+            text: Optional text to analyze. If None, analyzes entire conversation.
+            
+        Returns:
+            Conversation analysis or single text analysis results
+        """
+        # If no text provided, analyze entire conversation
+        if text is None:
+            return self.analyze_conversation()
+        
+        # Otherwise, analyze single text (existing behavior)
         """
         EZA NarrativeEngine v3.0: Analyze single text for context patterns,
         hidden intent, and indirect risks in multi-sentence content.

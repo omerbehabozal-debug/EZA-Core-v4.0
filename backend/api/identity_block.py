@@ -28,24 +28,43 @@ class IdentityBlock:
     """
 
     def __init__(self):
-        """Initialize IdentityBlock with detection patterns."""
-        # Face recognition keywords
+        """
+        Initialize IdentityBlock with detection patterns.
+        
+        EZA-IdentityBlock v3.0
+        Global Kişisel Veri Güvenlik Katmanı
+        GDPR / CCPA / KVKK / AI Act uyumlu
+        """
+        # Anahtar kelime kümeleri (kullanıcının istediği basit versiyon)
+        self.id_keywords = [
+            "tc", "kimlik", "id", "identity", "pasaport", "passport",
+            "imei", "iban", "adres", "phone", "telefon numarası"
+        ]
+
         self.face_keywords = [
+            "yüz", "face", "foto", "picture", "görsel tanı", "kime ait",
+            "akraba mı", "benzeyen", "ses kime ait", "voice identity",
+            # Mevcut gelişmiş keyword'ler
             "yüz tanı", "yuz tani", "yüzünden kim", "fotoğraftaki kim",
             "fotograftaki kim", "kim bu kişi", "kim bu kisi",
             "tanıyor musun", "taniyor musun", "bu kişi kim", "bu kisi kim",
             "fotoğraftan kim", "fotograftan kim", "resimde kim", "resimdeki kişi",
             "face recognition", "who is this", "identify person",
         ]
+
+        self.private_person_keywords = [
+            "öğretmenimin", "patronumun", "komşumun", "arkadaşımın",
+            "sevgilimin", "eşimin", "çocuğumun"
+        ]
         
-        # Voice recognition keywords
+        # Voice recognition keywords (mevcut)
         self.voice_keywords = [
             "ses kime ait", "bu ses kim", "ses tanı", "ses tani",
             "ses analizi yap", "sesini çıkar", "sesini cikar",
             "ses kaydındaki kişi", "ses kaydindaki kisi",
         ]
         
-        # Identity keywords
+        # Identity keywords (mevcut gelişmiş versiyon)
         self.identity_keywords = [
             "tc", "kimlik", "adres", "telefon", "numara",
             "iban", "ip", "lokasyon", "konum", "plaka",
@@ -130,6 +149,9 @@ class IdentityBlock:
         """
         Analyze text for identity, personal data, and re-identification risks.
         
+        EZA-IdentityBlock v3.0: Global Kişisel Veri Güvenlik Katmanı
+        GDPR / CCPA / KVKK / AI Act uyumlu
+        
         Args:
             text: Text to analyze
             intent: Intent engine results (optional)
@@ -138,39 +160,60 @@ class IdentityBlock:
         Returns:
             {
                 "ok": True,
-                "risk_flags": List[str],
+                "flags": List[str],  # Kullanıcının istediği basit format
                 "risk_score": float,
                 "risk_level": str,
-                "hits": Dict[str, List[str]],
                 "summary": str,
+                # Mevcut gelişmiş format (backward compatibility)
+                "risk_flags": List[str],
+                "hits": Dict[str, List[str]],
                 "context": Dict[str, float],
             }
         """
+        text_l = text.lower()
+        
+        # Kullanıcının istediği basit analiz
+        flags = []
+        score = 0.0
+
+        # Kimlik bilgisi talebi
+        if any(k in text_l for k in self.id_keywords):
+            flags.append("identity")
+            score += 0.7
+
+        # Yüz / ses / biyometrik analiz
+        if any(k in text_l for k in self.face_keywords):
+            flags.append("biometric")
+            score += 0.7
+
+        # Gerçek kişiye ait bilgi talebi
+        if any(k in text_l for k in self.private_person_keywords):
+            flags.append("personal-target")
+            score += 0.6
+
+        # Mevcut gelişmiş analiz (backward compatibility)
         hits = {
             "face": self._find(text, self.face_keywords),
             "voice": self._find(text, self.voice_keywords),
             "identity": self._find(text, self.identity_keywords),
-            "kinship": self._find(text, self.kinship_keywords),
-            "profession": self._find(text, self.profession_keywords),
-            "reidentify": self._find(text, self.reidentify_keywords),
+            "kinship": self._find(text, self.kinship_keywords) if hasattr(self, 'kinship_keywords') else [],
+            "profession": self._find(text, self.profession_keywords) if hasattr(self, 'profession_keywords') else [],
+            "reidentify": self._find(text, self.reidentify_keywords) if hasattr(self, 'reidentify_keywords') else [],
         }
 
-        flags = []
+        risk_flags = []
         if hits["face"]:
-            flags.append("face-recognition")
+            risk_flags.append("face-recognition")
         if hits["voice"]:
-            flags.append("voice-recognition")
+            risk_flags.append("voice-recognition")
         if hits["identity"]:
-            flags.append("personal-data")
-        if hits["kinship"]:
-            flags.append("kinship-inference")
-        if hits["profession"]:
-            flags.append("profession-inference")
-        if hits["reidentify"]:
-            flags.append("re-identification")
-
-        # Base risk: category sayısına göre
-        base_score = len(flags) * 0.18  # max ~1.0
+            risk_flags.append("personal-data")
+        if hits.get("kinship"):
+            risk_flags.append("kinship-inference")
+        if hits.get("profession"):
+            risk_flags.append("profession-inference")
+        if hits.get("reidentify"):
+            risk_flags.append("re-identification")
 
         # IntentEngine etkisi (zayıf ağırlık)
         intent_score = 0.0
@@ -182,12 +225,18 @@ class IdentityBlock:
         if reasoning:
             reasoning_score = float(reasoning.get("risk_score", 0.0)) * 0.25
 
-        total = base_score + intent_score + reasoning_score
+        # Basit skor + gelişmiş skor birleştirme
+        base_score = score  # Kullanıcının istediği basit skor
+        advanced_score = len(risk_flags) * 0.18  # Mevcut gelişmiş skor
+        
+        # En yüksek skoru kullan
+        total = max(base_score, advanced_score) + intent_score + reasoning_score
         risk_score = max(0.0, min(1.0, total))
 
-        if risk_score >= 0.85:
+        # Risk level determination (kullanıcının istediği format)
+        if risk_score >= 1.2 or risk_score >= 0.85:
             risk_level = "critical"
-        elif risk_score >= 0.6:
+        elif risk_score >= 0.7:
             risk_level = "high"
         elif risk_score >= 0.3:
             risk_level = "medium"
@@ -196,11 +245,14 @@ class IdentityBlock:
 
         return {
             "ok": True,
-            "risk_flags": flags,
-            "risk_score": round(risk_score, 4),
+            # Kullanıcının istediği basit format
+            "flags": list(set(flags)),
+            "risk_score": round(risk_score, 3),
             "risk_level": risk_level,
+            "summary": "IdentityBlock v3.0 analysis completed.",
+            # Mevcut gelişmiş format (backward compatibility)
+            "risk_flags": list(set(risk_flags)),
             "hits": hits,
-            "summary": "IdentityBlock v3.0 – identity, personal-data and re-identification risk completed.",
             "context": {
                 "intent_risk": round(intent_score, 4),
                 "reasoning_risk": round(reasoning_score, 4),

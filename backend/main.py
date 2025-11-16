@@ -20,6 +20,9 @@ from backend.api.narrative_engine import NarrativeEngine
 from backend.api.reasoning_shield import ReasoningShield
 from backend.api.report_builder import ReportBuilder
 from backend.api.identity_block import IdentityBlock
+from backend.api.drift_matrix import DriftMatrix
+from backend.api.eza_score import EZAScore
+from backend.api.verdict_engine import VerdictEngine
 from backend.api.utils.model_runner import (
     call_single_model,
     call_multi_models,
@@ -55,8 +58,9 @@ if not hasattr(app.state, "narrative_engine"):
     app.state.narrative_engine = NarrativeEngine(max_memory=10)
 
 # --- EZA-NarrativeEngine v2.2: Initialize long-context narrative engine ---
+# Multi-turn conversation analysis engine (max 20 messages)
 if not hasattr(app.state, "narrative"):
-    app.state.narrative = NarrativeEngine()
+    app.state.narrative = NarrativeEngine(max_memory=20)
 
 # --- ReasoningShield v5.0: Initialize central decision layer ---
 if not hasattr(app.state, "reasoning_shield"):
@@ -69,6 +73,14 @@ if not hasattr(app.state, "report_builder"):
 # --- EZA IdentityBlock v3.0: Initialize identity protection layer ---
 if not hasattr(app.state, "identity_block"):
     app.state.identity_block = IdentityBlock()
+
+# --- EZA Level-5 Upgrade: Initialize DriftMatrix, EZAScore, and VerdictEngine ---
+if not hasattr(app.state, "drift"):
+    app.state.drift = DriftMatrix()
+if not hasattr(app.state, "eza_score"):
+    app.state.eza_score = EZAScore()
+if not hasattr(app.state, "verdict"):
+    app.state.verdict = VerdictEngine()
 
 # --- Middleware Katmanı ---
 app.add_middleware(RequestLoggerMiddleware)
@@ -195,7 +207,19 @@ async def analyze(req: AnalyzeRequest, request: Request):
     text = req.text or req.query or ""
     model = (req.model or "chatgpt").lower()
 
-    # EZA-NarrativeEngine v4.0: Add user message to conversation memory
+    # EZA-NarrativeEngine: Initialize narrative engine if not exists
+    if not hasattr(request.app.state, "narrative") or request.app.state.narrative is None:
+        request.app.state.narrative = NarrativeEngine(max_memory=20)
+    
+    # Add user message to conversation memory
+    if text:
+        try:
+            request.app.state.narrative.add_message("user", text)
+        except Exception as e:
+            # Log error but don't fail the request
+            print(f"Warning: Could not add user message to narrative: {e}")
+
+    # EZA-NarrativeEngine v4.0: Legacy narrative_engine support
     if not hasattr(request.app.state, "narrative_engine"):
         request.app.state.narrative_engine = NarrativeEngine(max_memory=10)
     
@@ -243,22 +267,38 @@ async def analyze(req: AnalyzeRequest, request: Request):
         input_scores["risk_score"] = max(current_risk, reasoning_risk)
     
     # EZA-IdentityBlock v3.0: Analyze identity and personal data risks (with intent and reasoning context)
-    identity_results = request.app.state.identity_block.analyze(
-        text=text,
-        intent=input_scores.get("intent_engine"),
-        reasoning=reasoning_results,
-    )
+    identity_block_results = None
+    if hasattr(request.app.state, "identity_block") and request.app.state.identity_block is not None:
+        try:
+            identity_block_results = request.app.state.identity_block.analyze(
+                text=text,
+                intent=input_scores.get("intent_engine"),
+                reasoning=reasoning_results,
+            )
+        except Exception as e:
+            identity_block_results = {
+                "ok": False,
+                "error": str(e),
+                "summary": "IdentityBlock analysis failed."
+            }
+    else:
+        identity_block_results = {
+            "ok": False,
+            "error": "IdentityBlock not initialized",
+            "summary": "IdentityBlock analysis failed."
+        }
     
     # Add identity risk to input analysis
-    if identity_results.get("risk_score", 0.0) > 0.3:
-        if "risk_flags" not in input_scores:
-            input_scores["risk_flags"] = []
-        input_scores["risk_flags"].extend(identity_results.get("risk_flags", []))
-        input_scores["risk_flags"] = list(set(input_scores["risk_flags"]))  # Unique
-        # Update risk score if identity risk is higher
-        current_risk = input_scores.get("risk_score", 0.0)
-        identity_risk = identity_results.get("risk_score", 0.0)
-        input_scores["risk_score"] = max(current_risk, identity_risk)
+    if identity_block_results and identity_block_results.get("ok", False):
+        if identity_block_results.get("risk_score", 0.0) > 0.3:
+            if "risk_flags" not in input_scores:
+                input_scores["risk_flags"] = []
+            input_scores["risk_flags"].extend(identity_block_results.get("risk_flags", []))
+            input_scores["risk_flags"] = list(set(input_scores["risk_flags"]))  # Unique
+            # Update risk score if identity risk is higher
+            current_risk = input_scores.get("risk_score", 0.0)
+            identity_risk = identity_block_results.get("risk_score", 0.0)
+            input_scores["risk_score"] = max(current_risk, identity_risk)
     
     # EZA-NarrativeEngine v2.2: Analyze long conversation context (risk accumulation, intent drift, escalation)
     narrative_v2_results = request.app.state.narrative.analyze_narrative(text)
@@ -287,7 +327,7 @@ async def analyze(req: AnalyzeRequest, request: Request):
     request.app.state.narrative.add(
         text=text,
         intent=input_scores.get("intent_engine", {}),
-        identity=identity_results,
+        identity=identity_block_results if identity_block_results and identity_block_results.get("ok", False) else {},
         reasoning=reasoning_results,
     )
     
@@ -389,9 +429,18 @@ async def analyze(req: AnalyzeRequest, request: Request):
     else:
         raw_answer = str(model_outputs)
 
-    # EZA-NarrativeEngine v4.0: Add assistant response to memory
+    # EZA-NarrativeEngine: Add assistant response to memory
     if hasattr(request.app.state, "narrative_engine"):
         request.app.state.narrative_engine.add_message("assistant", raw_answer)
+    
+    # EZA-NarrativeEngine: Add assistant response to main narrative engine
+    if hasattr(request.app.state, "narrative") and request.app.state.narrative is not None:
+        try:
+            if raw_answer:
+                request.app.state.narrative.add_message("assistant", raw_answer)
+        except Exception as e:
+            # Log error but don't fail the request
+            print(f"Warning: Could not add assistant message to narrative: {e}")
 
     advice_text = generate_advice(input_scores, output_scores, alignment_meta)
     rewritten_text = generate_rewritten_answer(raw_answer, advice_text, alignment_meta)
@@ -442,17 +491,34 @@ async def analyze(req: AnalyzeRequest, request: Request):
     )
     
     # EZA-IdentityBlock v3.0: Add identity analysis to report
-    report["identity"] = identity_results
+    report["identity_block"] = identity_block_results
     
     # EZA-NarrativeEngine v3.0: Add context analysis to report
     report["narrative_context"] = narrative_context_results
     
+    # EZA-NarrativeEngine: Analyze entire conversation (multi-turn analysis)
+    narrative_results = None
+    if hasattr(request.app.state, "narrative") and request.app.state.narrative is not None:
+        try:
+            narrative_results = request.app.state.narrative.analyze()  # No text parameter = analyze entire conversation
+        except Exception as e:
+            narrative_results = {
+                "ok": False,
+                "error": str(e),
+                "notes": "narrative-analysis-failed"
+            }
+    else:
+        narrative_results = {"ok": False, "notes": "narrative-engine-not-initialized"}
+    
     # EZA-NarrativeEngine v2.2: Add long-context narrative analysis to report
-    report["narrative"] = narrative_v2_results
+    report["narrative"] = narrative_results  # Multi-turn conversation analysis
     report["narrative_v2"] = narrative_v2_results  # Also keep for backward compatibility
     
     # EZA-ReasoningShield v5.0: Add reasoning analysis to report
-    report["reasoning_shield"] = reasoning_results
+    # shield_result contains the final weighted matrix evaluation (evaluate method)
+    report["reasoning_shield"] = shield_result
+    # Also include pattern-based reasoning analysis for detailed debugging
+    report["reasoning_analysis"] = reasoning_results
     
     # Add legacy fields for backward compatibility
     report["language"] = input_scores.get("language")
@@ -465,6 +531,24 @@ async def analyze(req: AnalyzeRequest, request: Request):
     report["eza_alignment"] = eza_alignment
     report["advice"] = advice_text
     report["rewritten_text"] = rewritten_text
+
+    # EZA Level-5 Upgrade: Compute drift matrix, EZA score, and final verdict
+    # Get memory from narrative engine
+    narrative_memory = []
+    if hasattr(request.app.state, "narrative") and request.app.state.narrative is not None:
+        narrative_memory = getattr(request.app.state.narrative, "memory", [])
+        # Enhance memory entries with report data for drift analysis
+        # If memory entries don't have report data, add current report to enable drift tracking
+        if narrative_memory and "report" not in narrative_memory[-1]:
+            narrative_memory[-1]["report"] = report
+    
+    drift = request.app.state.drift.compute(narrative_memory)
+    score = request.app.state.eza_score.compute(report, drift)
+    final_verdict = request.app.state.verdict.generate(report, score, drift)
+    
+    report["drift_matrix"] = drift
+    report["eza_score"] = score
+    report["final_verdict"] = final_verdict
 
     # 7) Log risk report to file
     import json

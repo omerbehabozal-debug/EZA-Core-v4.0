@@ -276,14 +276,26 @@ class ReasoningShield:
         """
         Evaluate overall ethical alignment and security score.
         
+        EZA-ReasoningShield v5.0: Çok katmanlı güvenlik mimarisinin final değerlendirici katmanı.
+        Input analizi + Output analizi + Niyet motoru sonuçlarını
+        ağırlıklı matris ile birleştirerek final risk skorunu üretir.
+        
         Args:
-            input_analysis: Input analysis results
-            output_analysis: Output analysis results
-            intent_engine: Intent engine results (optional)
+            input_analysis: Input analysis results (input_report)
+            output_analysis: Output analysis results (output_report)
+            intent_engine: Intent engine results (intent_results)
             narrative_info: Narrative engine results (optional)
             
         Returns:
             {
+                "final_risk_score": float (0-1),
+                "final_risk_level": str ("critical" | "high" | "medium" | "low" | "none"),
+                "intent_primary": str,
+                "input_level": str,
+                "output_level": str,
+                "intent_level": str,
+                "engine_version": "EZA-ReasoningShield v5.0",
+                # Legacy fields for backward compatibility
                 "ok": True,
                 "level": "safe" | "caution" | "critical",
                 "alignment_score": 0-100,
@@ -291,6 +303,45 @@ class ReasoningShield:
                 "meta": {...}
             }
         """
+        # EZA-ReasoningShield v5.0: Weighted matrix calculation
+        # Input risk
+        in_score = float(input_analysis.get("risk_score", 0.0))
+        in_lvl = input_analysis.get("risk_level", "none")
+
+        # Output risk
+        out_score = float(output_analysis.get("risk_score", 0.0))
+        out_lvl = output_analysis.get("risk_level", "none")
+
+        # Intent risk
+        intent_score = 0.0
+        intent_lvl = "none"
+        intent_primary = None
+        if intent_engine:
+            intent_score = float(intent_engine.get("risk_score", 0.0))
+            intent_lvl = intent_engine.get("risk_level", "none")
+            intent_primary = intent_engine.get("primary", "")
+
+        # Weighted matrix: Input (45%) + Output (35%) + Intent (20%)
+        final_score = round(
+            (in_score * 0.45) +
+            (out_score * 0.35) +
+            (intent_score * 0.20),
+            4
+        )
+
+        # Final level determination
+        if final_score >= 0.90:
+            final_level = "critical"
+        elif final_score >= 0.65:
+            final_level = "high"
+        elif final_score >= 0.35:
+            final_level = "medium"
+        elif final_score > 0:
+            final_level = "low"
+        else:
+            final_level = "none"
+
+        # Legacy compatibility: Continue with existing logic for backward compatibility
         issues: List[str] = []
         score = 100  # 0–100 arası güvenlik puanı (yüksek = daha güvenli)
 
@@ -301,13 +352,6 @@ class ReasoningShield:
         safety_issues_out = output_analysis.get("analysis", {}).get("safety_issues", []) or []
 
         all_flags = set(input_flags + output_flags + safety_issues_in + safety_issues_out)
-
-        # 2) IntentEngine bilgisi
-        intent_primary = None
-        intent_risk = 0.0
-        if intent_engine:
-            intent_primary = intent_engine.get("primary")
-            intent_risk = float(intent_engine.get("risk_score", 0))
 
         # 3) NarrativeEngine bilgisi
         narrative_risk = 0.0
@@ -321,7 +365,7 @@ class ReasoningShield:
         toxic_types = {"toxicity"}
 
         # 5) Kritik risk var mı?
-        has_critical = any(flag in critical_types for flag in all_flags) or intent_risk >= 0.85
+        has_critical = any(flag in critical_types for flag in all_flags) or intent_score >= 0.85
         has_toxic = any(flag in toxic_types for flag in all_flags)
         has_narrative_risk = narrative_risk >= 0.75 or "escalation" in narrative_patterns
 
@@ -358,13 +402,22 @@ class ReasoningShield:
         issues = sorted(list(set(issues)))
 
         return {
+            # EZA-ReasoningShield v5.0: Primary output format
+            "final_risk_score": final_score,
+            "final_risk_level": final_level,
+            "intent_primary": intent_primary or "",
+            "input_level": in_lvl,
+            "output_level": out_lvl,
+            "intent_level": intent_lvl,
+            "engine_version": "EZA-ReasoningShield v5.0",
+            # Legacy fields for backward compatibility
             "ok": True,
             "level": level,  # "safe" | "caution" | "critical"
             "alignment_score": score,  # 0–100
             "issues": issues,
             "meta": {
                 "intent_primary": intent_primary,
-                "intent_risk": intent_risk,
+                "intent_risk": intent_score,
                 "narrative_risk": narrative_risk,
                 "narrative_patterns": narrative_patterns,
                 "all_flags": list(all_flags),
