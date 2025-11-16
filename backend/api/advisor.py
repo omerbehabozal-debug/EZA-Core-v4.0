@@ -13,6 +13,166 @@ from typing import Any, Dict, Optional
 
 from backend.api.utils.model_runner import rewrite_with_ethics
 
+# -----------------------------------------------
+# Dynamic Ethical Safety Advisor Template System
+# -----------------------------------------------
+
+SAFE_TEMPLATE = """
+Bu içerikte herhangi bir risk tespit edilmedi.
+Soru etik, güvenli ve bilgilendirici kategoride değerlendirilmiştir.
+
+Kısa Analiz:
+
+{analysis_summary}
+
+EZA, bu tür nötr veya bilgi amaçlı sorularda yalnızca içerik analizi yapar
+ve kullanıcıyı yönlendirmek için gereksiz uyarılar üretmez.
+"""
+
+LOW_RISK_TEMPLATE = """
+İçerikte düşük seviyede risk unsuru tespit edildi.
+Bu, kötü niyet olmadığı halde bazı ifadelerin yanlış anlaşılabilir
+veya belirli hassas konulara temas ediyor olabileceği anlamına gelir.
+
+Kısa Analiz:
+
+{analysis_summary}
+
+Öneri:
+
+- Daha net ifade kullanabilirsiniz.
+
+- Konuyu açıklığa kavuşturmak yanlış anlamaları önler.
+"""
+
+MEDIUM_RISK_TEMPLATE = """
+Bu içerikte orta seviyede bir etik risk tespit edildi.
+Bu, bazı ifadelerin baskı, manipülasyon, önyargı veya hassas konuları 
+içerebileceği anlamına gelir.
+
+Kısa Analiz:
+
+{analysis_summary}
+
+Etik Öneri:
+
+- Dile dikkat edilmesi faydalıdır.
+
+- Bu tür konularda daha kapsayıcı, saygılı ve dikkatli bir dil önerilir.
+"""
+
+HIGH_RISK_TEMPLATE = """
+Bu içerikte yüksek etik risk tespit edildi.
+Mesaj, zarar verici davranış, baskı, manipülasyon, önyargı veya hukuki
+sorun oluşturabilecek ifadeler içeriyor olabilir.
+
+Kısa Analiz:
+
+{analysis_summary}
+
+EZA Önerisi:
+
+- Bu konuda profesyonel destek almak daha doğru olabilir.
+
+- Yasal, güvenli ve saygılı yollarla hareket etmek önemlidir.
+"""
+
+CRITICAL_RISK_TEMPLATE = """
+⚠ Kritik Etik Risk Tespit Edildi
+
+Bu içerik, güvenlik açısından ciddi tehdit, hukuki sorun, zarar,
+şiddet veya ağır manipülasyon potansiyeli taşıyor olabilir.
+
+Kısa Analiz:
+
+{analysis_summary}
+
+EZA Tavsiyesi:
+
+- Bu tür taleplerle ilgili doğrudan yardım sunulmaz.
+
+- Güvenli ve yasal davranış biçimleri dışına çıkmamanız önemlidir.
+"""
+
+
+def build_dynamic_safe_response(report: dict) -> str:
+    """
+    EZA'nın final verdict seviyesine göre uygun etik yanıtı üretir.
+    """
+
+    level = (report.get("final_verdict", {}) or {}).get("level", "safe").lower()
+    summary = report.get("final_verdict", {}).get("reason", "")
+
+    if level == "safe":
+        return SAFE_TEMPLATE.format(analysis_summary=summary).strip()
+
+    if level == "low":
+        return LOW_RISK_TEMPLATE.format(analysis_summary=summary).strip()
+
+    if level == "caution":
+        return MEDIUM_RISK_TEMPLATE.format(analysis_summary=summary).strip()
+
+    if level == "unsafe":
+        return HIGH_RISK_TEMPLATE.format(analysis_summary=summary).strip()
+
+    if level == "critical":
+        return CRITICAL_RISK_TEMPLATE.format(analysis_summary=summary).strip()
+
+    # fallback
+    return SAFE_TEMPLATE.format(analysis_summary=summary).strip()
+
+
+def build_standalone_response(report: Dict[str, Any], model_output: Optional[str] = None) -> str:
+    """
+    Standalone modda kullanıcıya gösterilecek nihai cevabı üretir.
+    Yeni dinamik şablon sistemini kullanır.
+    """
+    try:
+        # 1) Model cevabını al (eğer varsa)
+        if model_output is None:
+            # Try to get from report
+            model_outputs = report.get("model_outputs", {})
+            if isinstance(model_outputs, dict):
+                model_output = model_outputs.get("chatgpt") or model_outputs.get(list(model_outputs.keys())[0] if model_outputs else None, "")
+            else:
+                model_output = str(model_outputs) if model_outputs else ""
+        
+        # Clean up model output (remove simulation prefix if present)
+        if model_output and model_output.startswith("["):
+            # Keep the model output as is, but we'll format it nicely
+            pass
+        
+        # 2) Dinamik etik açıklama:
+        advisory = build_dynamic_safe_response(report)
+        
+        # 3) Verdict bilgisi (not used in output, but kept for potential future use)
+        verdict = report.get("final_verdict", {}) or {}
+        eza_score_data = report.get("eza_score", {}) or {}
+        # eza_score can be a dict with "final_score" or a number
+        if isinstance(eza_score_data, dict):
+            eza_score = eza_score_data.get("final_score", 0.0)
+        else:
+            eza_score = float(eza_score_data) if eza_score_data else 0.0
+
+        # 4) Kullanıcıya göstereceğimiz metin:
+        parts = []
+        
+        # Model cevabı varsa ekle
+        if model_output and model_output.strip():
+            parts.append(model_output.strip())
+        
+        # Etik açıklama
+        parts.append(f"\n\n[EZA Advisory]\n{advisory.strip()}")
+        
+        return "\n".join(parts)
+    except Exception as e:
+        # Fallback: return simple format if something goes wrong
+        import traceback
+        print(f"ERROR in build_standalone_response: {e}")
+        print(traceback.format_exc())
+        model_output = model_output or report.get("model_outputs", {}).get("chatgpt", "") if isinstance(report.get("model_outputs"), dict) else str(report.get("model_outputs", ""))
+        return f"{model_output}\n\n[EZA Advisory]\nEtik analiz tamamlandı."
+
 
 def _advice_for_self_harm() -> str:
     return (
@@ -107,10 +267,22 @@ def generate_advice(
     input_analysis: Dict[str, Any],
     output_analysis: Dict[str, Any],
     alignment_meta: Dict[str, Any],
+    report: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Alignment sonucuna ve risklere göre etik tavsiye metnini üretir.
+    Yeni dinamik şablon sistemi kullanılır (final_verdict varsa).
     """
+    # Try to use new dynamic template system if final_verdict is available
+    # Check report parameter first, then input_analysis
+    if report is None:
+        report = input_analysis.get("report") or input_analysis
+    if isinstance(report, dict) and report.get("final_verdict"):
+        try:
+            return build_dynamic_safe_response(report)
+        except Exception:
+            pass  # Fall back to old system if new system fails
+    
     # EZA-IdentityBlock v3.0: Check identity risk first (highest priority)
     identity_info = input_analysis.get("identity_block") or input_analysis.get("analysis", {}).get("identity", {})
     if identity_info and isinstance(identity_info, dict):
@@ -201,35 +373,30 @@ def generate_rewritten_answer(
     original_answer: str,
     advice_text: str,
     alignment_meta: Dict[str, Any],
+    report: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Etik olarak güçlendirilmiş cevabı üretir.
-    Şu an basit bir kompozisyon kullanıyoruz; ileride
-    büyük bir model ile rewrite yapılabilir.
+    Yeni dinamik şablon sistemi kullanılır (report ve final_verdict varsa).
     """
-    # alignment seviyesini de metne yedirelim (debug amaçlı, ama kullanıcıya da anlamlı)
-    label = alignment_meta.get("label") or alignment_meta.get("alignment") or ""
-    score = alignment_meta.get("score")
-
-    header = "Bu isteğe doğrudan yardım edemem çünkü şiddet, yasa dışı faaliyetler " \
-             "veya başkalarına zarar verebilecek davranışlar etik değildir. " \
-             "Bunun yerine, sorunları yasal, güvenli ve saygılı yollarla çözmeye " \
-             "odaklanmak en doğrusudur.\n\n"
-
-    # Self-harm için metin daha hassas olmalı, ekstra sertlikten kaçınalım
-    dominant = _pick_dominant_category(alignment_meta)
-    if dominant == "self-harm":
-        header = (
-            "Bu mesaj, kendinize zarar verme veya intihar düşüncelerini içerebilir. "
-            "Bu tür duygularla baş etmek çok zor olabilir, fakat yalnız değilsiniz. "
-            "Buradan yalnızca genel bilgiler verebilirim; profesyonel destek almak "
-            "çok daha önemlidir.\n\n"
-        )
-
+    # Try to use new dynamic template system if report is available
+    if report and isinstance(report, dict) and report.get("final_verdict"):
+        try:
+            # Use dynamic template system for advisory
+            advisory = build_dynamic_safe_response(report)
+            
+            # Build the final response with base output and advisory
+            base = rewrite_with_ethics(original_answer, advice_text)
+            
+            return (
+                f"{base}\n\n"
+                f"[EZA Advisory]:\n"
+                f"{advisory}"
+            )
+        except Exception:
+            pass  # Fall back to old system if new system fails
+    
+    # Fallback: Use old system if report is not available
+    # Sadece base output döndür, eski alignment metni kaldırıldı
     base = rewrite_with_ethics(original_answer, advice_text)
-
-    extra = ""
-    if score is not None:
-        extra = f"\n\n[EZA Alignment]: {label} (güvenlik skoru: {score}/100)"
-
-    return header + base + extra
+    return base

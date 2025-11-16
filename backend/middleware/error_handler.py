@@ -27,8 +27,15 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 
 async def generic_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Beklenmeyen hata: {exc}")
+    import traceback
+    error_trace = traceback.format_exc()
+    logger.error(f"Beklenmeyen hata: {exc}\n{error_trace}")
+    # Return detailed error in development mode
     return JSONResponse(
         status_code=500,
-        content={"error": "Sunucu hatası. Ekip bilgilendirildi."}
+        content={
+            "error": "Sunucu hatası. Ekip bilgilendirildi.",
+            "detail": str(exc),
+            "traceback": error_trace
+        }
     )

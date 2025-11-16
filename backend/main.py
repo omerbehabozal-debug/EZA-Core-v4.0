@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from backend.api.input_analyzer import analyze_input
 from backend.api.output_analyzer import analyze_output, evaluate_output
 from backend.api.alignment_engine import compute_alignment
-from backend.api.advisor import generate_advice, generate_rewritten_answer
+from backend.api.advisor import generate_advice, generate_rewritten_answer, build_standalone_response
 from backend.api.narrative_engine import NarrativeEngine
 from backend.api.reasoning_shield import ReasoningShield
 from backend.api.report_builder import ReportBuilder
@@ -482,10 +482,12 @@ async def analyze(req: AnalyzeRequest, request: Request):
             # Log error but don't fail the request
             print(f"Warning: Could not add assistant message to narrative: {e}")
 
-    advice_text = generate_advice(input_scores, output_scores, alignment_meta)
-    rewritten_text = generate_rewritten_answer(raw_answer, advice_text, alignment_meta)
+    # 5) Model cevabını ve tavsiyeyi üret (temporary, will be updated after report is created)
+    # Note: This is a temporary call, final advice will be generated after report is created
+    advice_text_temp = generate_advice(input_scores, output_scores, alignment_meta)
+    rewritten_text_temp = generate_rewritten_answer(raw_answer, advice_text_temp, alignment_meta, None)
 
-    # 6) Log
+    # 6) Log (temporary)
     log_event(
         "analyze_completed_v10.2",
         {
@@ -495,8 +497,8 @@ async def analyze(req: AnalyzeRequest, request: Request):
             "model_outputs": model_outputs,
             "output_scores": output_scores,
             "alignment_meta": alignment_meta,
-            "advice": advice_text,
-            "rewritten_text": rewritten_text,
+            "advice": advice_text_temp,
+            "rewritten_text": rewritten_text_temp,
         },
     )
 
@@ -515,9 +517,10 @@ async def analyze(req: AnalyzeRequest, request: Request):
     }
 
     # EZA Professional Reporting Layer v3.2: Build comprehensive report
-    advisor_data = {
-        "advice": advice_text,
-        "rewritten_text": rewritten_text,
+    # NOTE: advisor_data will be updated later after build_standalone_response() is called
+    advisor_data_temp = {
+        "advice": advice_text_temp,
+        "rewritten_text": rewritten_text_temp,
         "alignment_label": alignment_label,
     }
     
@@ -527,7 +530,7 @@ async def analyze(req: AnalyzeRequest, request: Request):
         intent_data=input_scores.get("intent_engine", {}),
         narrative_data=input_scores.get("analysis", {}).get("narrative", {}),
         shield_data=shield_result,
-        advisor_data=advisor_data,
+        advisor_data=advisor_data_temp,
     )
     
     # EZA-IdentityBlock v3.0: Add identity analysis to report
@@ -569,8 +572,9 @@ async def analyze(req: AnalyzeRequest, request: Request):
     report["alignment"] = alignment_label
     report["alignment_meta"] = alignment_meta
     report["eza_alignment"] = eza_alignment
-    report["advice"] = advice_text
-    report["rewritten_text"] = rewritten_text
+    report["advice"] = advice_text_temp  # Temporary advice, will be updated later
+    # NOTE: rewritten_text will be updated later after build_standalone_response() is called
+    # report["rewritten_text"] = rewritten_text  # OLD - removed, will be set at line 862
 
     # EZA Level-6 Upgrade: Run new safety layers
     # Get memory from narrative engine for Level-6 modules
@@ -840,6 +844,39 @@ async def analyze(req: AnalyzeRequest, request: Request):
     report["drift_matrix"] = drift
     report["eza_score"] = score
     report["final_verdict"] = final_verdict
+
+    # 5b) Generate advice with final_verdict (using new dynamic template system)
+    # Pass report as separate parameter to avoid circular reference
+    advice_text = generate_advice(input_scores, output_scores, alignment_meta, report)
+    
+    # Use build_standalone_response for standalone mode (new dynamic template system)
+    try:
+        rewritten_text = build_standalone_response(report, raw_answer)
+    except Exception as e:
+        # Fallback if build_standalone_response fails
+        import traceback
+        print(f"ERROR in build_standalone_response: {e}")
+        print(traceback.format_exc())
+        # Use simple fallback - get model_output from report
+        fallback_output = raw_answer or ""
+        if not fallback_output:
+            report_model_outputs = report.get("model_outputs", {})
+            if isinstance(report_model_outputs, dict):
+                fallback_output = report_model_outputs.get("chatgpt", "") or (list(report_model_outputs.values())[0] if report_model_outputs else "")
+            else:
+                fallback_output = str(report_model_outputs) if report_model_outputs else ""
+        rewritten_text = f"{fallback_output}\n\n[EZA Advisory]\nEtik analiz tamamlandı."
+    
+    # CRITICAL: Update report with final advice and rewritten text
+    # Update both report["advisor"] and report["rewritten_text"]
+    report["advisor"] = {
+        "advice": advice_text,
+        "rewritten_text": rewritten_text,
+        "alignment_label": alignment_label,
+    }
+    
+    # CRITICAL: Update report["rewritten_text"] with the new value
+    report["rewritten_text"] = rewritten_text
 
     # 7) Log risk report to file
     import json

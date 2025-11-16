@@ -57,49 +57,17 @@ def rewrite_with_ethics(
 ) -> str:
     """
     Etik olarak güçlendirilmiş cevap oluşturur – EZA-Core v5.
-
-    risk_flags:
-        - self-harm → krize duyarlı, destek odaklı mesaj
-        - illegal / violence / manipulation → yönlendirici, zararı azaltıcı mesaj
-        - aksi halde: orijinal cevabı etik çerçeveyle güçlendir.
+    
+    NOT: Bu fonksiyon artık sadece basit bir wrapper.
+    Gerçek etik açıklama build_dynamic_safe_response() ile üretilir.
     """
     if original_text is None:
         original_text = ""
     if advice is None:
         advice = ""
 
-    risk_flags = risk_flags or []
-
-    # Self-harm özel senaryosu
-    if "self-harm" in risk_flags:
-        return (
-            "Bu mesaj, kendine zarar verme veya intihar düşüncelerini içerebilir. "
-            "Böyle hissetmek çok zor olabilir, fakat yalnız değilsiniz. "
-            "Buradan genel bilgiler verebilirim; ancak profesyonel destek almak çok daha önemlidir. "
-            "Lütfen güvendiğiniz biriyle konuşun ve bulunduğunuz ülkedeki acil yardım hatlarıyla "
-            "veya bir ruh sağlığı uzmanıyla en kısa sürede iletişime geçin."
-        )
-
-    # Yasa dışı, şiddet veya manipülasyon içeren riskli içerikler için
-    if any(flag in risk_flags for flag in ["illegal", "violence", "manipulation"]):
-        return (
-            "Bu isteğe doğrudan yardım edemem çünkü şiddet, yasa dışı faaliyetler veya "
-            "başkalarına zarar verebilecek davranışlar etik değildir. "
-            "Bunun yerine, sorunları yasal, güvenli ve saygılı yollarla çözmeye odaklanmak en doğrusudur. "
-            "Aşağıda, daha güvenli bir yaklaşım için genel bir yönlendirme bulabilirsiniz:\n\n"
-            f"Etik Tavsiye:\n{advice}"
-        )
-
-    # Diğer tüm durumlar için – orijinal cevabı etik çerçeveyle güçlendir
+    # Basit format: sadece orijinal metni döndür
+    # Etik açıklama build_dynamic_safe_response() ile ayrıca üretilir
     original_text = str(original_text).strip()
-    advice = str(advice).strip()
-
-    return (
-        "Orijinal Cevap:\n"
-        f"{original_text or 'Model cevabı simülasyon modunda.'}\n\n"
-        "Etik Perspektif:\n"
-        f"{advice or 'Bu içerik için özel bir risk tespit edilmedi.'}\n\n"
-        "Etik Olarak Güçlendirilmiş Cevap:\n"
-        f"{original_text or 'Model cevabı'}\n"
-        "— Bu cevap, kullanıcı güvenliği ve saygılı iletişim ilkeleri gözetilerek değerlendirilmiştir."
-    )
+    
+    return original_text or "Model cevabı simülasyon modunda."

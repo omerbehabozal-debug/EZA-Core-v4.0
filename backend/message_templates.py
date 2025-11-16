@@ -81,17 +81,18 @@ def get_ethically_enhanced_answer(original_output: str, category: str, risk_leve
     """
     
     # Kritik risklerde direkt yardım yok
+    # NOT: Bu fonksiyon artık deprecated. build_dynamic_safe_response() kullanılmalı.
     if risk_level == "critical":
         return (
-            "Bu isteğe doğrudan yardım edemem çünkü yüksek riskli veya zararlı bir içerik barındırıyor olabilir. "
+            "Bu içerik yüksek riskli veya zararlı olabilir. "
             "Sorunları yasal, güvenli ve başkalarına zarar vermeyecek yollarla çözmek en doğrusudur."
         )
     
     # Yüksek risk: uyarı + yumuşak yaklaşım
     if risk_level == "high":
         return (
-            "Bu isteğe doğrudan teknik destek veremem çünkü etik ve güvenlik açısından riskler içeriyor olabilir. "
-            "Buna rağmen, daha sağlıklı ve güvenli alternatif yollar düşünmek her zaman mümkündür."
+            "Bu istek etik ve güvenlik açısından riskler içeriyor olabilir. "
+            "Daha sağlıklı ve güvenli alternatif yollar düşünmek her zaman mümkündür."
         )
     
     # Orta risk: orijinali hafifçe yumuşat, etik çerçeve ekle (ileride geliştirilebilir)

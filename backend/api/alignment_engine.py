@@ -204,15 +204,17 @@ def compute_alignment(
     }
 
     # 7) EZA-Core v11.0: Use message templates for advice and ethical output
+    # NOTE: ethical_output is deprecated - use build_standalone_response() instead
     category = dominant_category or primary_intent
     eza_advice = get_advice_for_category(category, master_level)
     result["eza_advice"] = eza_advice
     
     # Get original output if available
-    original_output = output_analysis.get("output_text", "")
-    if original_output:
-        ethical_output = get_ethically_enhanced_answer(original_output, category, master_level)
-        result["ethical_output"] = ethical_output
+    # DISABLED: ethical_output uses old format, now using build_standalone_response() in main.py
+    # original_output = output_analysis.get("output_text", "")
+    # if original_output:
+    #     ethical_output = get_ethically_enhanced_answer(original_output, category, master_level)
+    #     result["ethical_output"] = ethical_output
 
     # 8) Sensitive-data Mega Patch v1.0: Add ethical message
     if "sensitive-data" in risk_flags:
