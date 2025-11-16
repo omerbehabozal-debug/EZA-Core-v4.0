@@ -27,6 +27,11 @@ class VerdictEngine:
         moral_level = str(moral.get("level", "low"))
         moral_score = float(moral.get("score", 0.0))
         
+        # LEVEL 9 – Abuse & Coercion Engine
+        abuse = report.get("abuse") or {}
+        abuse_level = str(abuse.get("level", "low"))
+        abuse_score = float(abuse.get("score", 0.0))
+        
         # Initialize verdict dict
         verdict = {
             "level": "safe",
@@ -137,6 +142,24 @@ class VerdictEngine:
 
         verdict["moral_compass_level"] = moral_level
         verdict["moral_compass_score"] = round(moral_score, 4)
+        
+        # LEVEL 9 – Abuse etkisi
+        abuse_high = abuse_level in {"high", "critical"} or abuse_score >= 0.6
+
+        if abuse_high:
+            lvl = verdict.get("level", "safe").lower()
+
+            # Tehdit veya şantaj durumunda güvenlik seviyesi düşürülür
+            if lvl in {"safe", "caution"}:
+                verdict["level"] = "unsafe"
+                verdict["reason"] += " | AbuseEngine: şiddet / tehdit / baskı sinyali tespit edildi."
+            else:
+                verdict["reason"] += " | AbuseEngine: yüksek istismar riski bulundu."
+
+            verdict.setdefault("flags", []).append("abuse-risk")
+
+        verdict["abuse_level"] = abuse_level
+        verdict["abuse_score"] = round(abuse_score, 4)
         
         return verdict
 

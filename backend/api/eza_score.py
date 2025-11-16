@@ -27,7 +27,9 @@ class EZAScore:
             # LEVEL 7 – Critical Bias Engine
             "critical_bias": 0.07,
             # LEVEL 8 – Moral Compass Engine
-            "moral_compass": 0.10
+            "moral_compass": 0.10,
+            # LEVEL 9 – Abuse & Coercion Engine
+            "abuse": 0.10
         }
 
     def compute(self, report, drift_matrix):
@@ -98,13 +100,18 @@ class EZAScore:
         moral_compass = report.get("moral_compass") or {}
         moral_compass_score = float(moral_compass.get("score", 0.0))
 
-        # Compute final score with optional Level-6, Level-7, and Level-8 fields
+        # LEVEL 9 – Abuse & Coercion Engine
+        abuse = report.get("abuse") or {}
+        abuse_score = float(abuse.get("score", 0.0))
+
+        # Compute final score with optional Level-6, Level-7, Level-8, and Level-9 fields
         # If new fields are missing, use original weights (backward compatible)
         has_level6 = (deception_data or psych_pressure_data or legal_risk_data)
         has_level7 = critical_bias and isinstance(critical_bias, dict) and critical_bias.get("bias_score") is not None
         has_level8 = moral_compass and isinstance(moral_compass, dict) and moral_compass.get("score") is not None
+        has_level9 = abuse and isinstance(abuse, dict) and abuse.get("score") is not None
         
-        if has_level6 or has_level7 or has_level8:
+        if has_level6 or has_level7 or has_level8 or has_level9:
             # Use updated weights with Level-6 and Level-7 fields
             total_score = (
                 intent_score * self.weights["intent"]
@@ -126,6 +133,10 @@ class EZAScore:
             if has_level8:
                 total_score += moral_compass_score * self.weights["moral_compass"]
             
+            # Add abuse if available
+            if has_level9:
+                total_score += abuse_score * self.weights["abuse"]
+            
             # Normalize by total weight used (for backward compatibility)
             total_weight = (
                 self.weights["intent"]
@@ -142,6 +153,8 @@ class EZAScore:
                 total_weight += self.weights["critical_bias"]
             if has_level8:
                 total_weight += self.weights["moral_compass"]
+            if has_level9:
+                total_weight += self.weights["abuse"]
             
             # Normalize to keep score in 0-1 range
             if total_weight > 0:
@@ -165,7 +178,7 @@ class EZAScore:
         }
         
         # Add component scores for debugging
-        if has_level6 or has_level7 or has_level8:
+        if has_level6 or has_level7 or has_level8 or has_level9:
             result["components"] = {
                 "intent": round(intent_score, 4),
                 "identity": round(identity_score, 4),
@@ -181,6 +194,8 @@ class EZAScore:
                 result["components"]["critical_bias"] = round(critical_bias_score, 4)
             if has_level8:
                 result["components"]["moral_compass"] = round(moral_compass_score, 4)
+            if has_level9:
+                result["components"]["abuse"] = round(abuse_score, 4)
 
         return result
 
