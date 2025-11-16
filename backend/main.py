@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from backend.api.input_analyzer import analyze_input
 from backend.api.output_analyzer import analyze_output, evaluate_output
 from backend.api.alignment_engine import compute_alignment
-from backend.api.advisor import generate_advice
+from backend.api.advisor import generate_advice, generate_rewritten_answer
 from backend.api.utils.model_runner import (
     call_single_model,
     call_multi_models,
@@ -174,10 +174,14 @@ async def analyze(req: AnalyzeRequest):
         out = call_single_model(text, model_name=model)
         model_outputs = {model: out}
 
-    # 3) Output analizi – ilk model üzerinden
+    # 3) Output analizi – ilk model üzerinden (input_analysis ile)
     output_analyses: Dict[str, Any] = {}
     for model_name, output_text in model_outputs.items():
-        output_analyses[model_name] = analyze_output(output_text, model=model_name)
+        output_analyses[model_name] = analyze_output(
+            output_text, 
+            model=model_name, 
+            input_analysis=input_scores
+        )
 
     if output_analyses:
         first_key = list(output_analyses.keys())[0]
@@ -201,52 +205,46 @@ async def analyze(req: AnalyzeRequest):
             "error": None,
         }
 
-    # 4) Alignment hesabı (EZA v5)
-    alignment_result = compute_alignment(
+    # 4) Alignment meta bilgisini hesapla (EZA v10.2)
+    alignment_meta = compute_alignment(
         input_analysis=input_scores,
         output_analysis=output_scores,
     )
-    alignment = alignment_result.get("alignment", "Unknown")
+    
+    # Frontend geriye sadece kısa label bekliyor, ama metayı da JSON'da dönebiliriz
+    alignment_label = alignment_meta.get("label", "Unknown")
 
-    # 5) EZA tavsiyesi
-    advice = generate_advice(
-        input_analysis=input_scores,
-        output_analysis=output_scores,
-        alignment_result=alignment_result,
-    )
+    # 5) Model cevabını ve tavsiyeyi üret
+    # Burada örnek olarak tek model (chatgpt) çıktısını kullanıyoruz.
+    # Eğer multi-model çalışıyorsan, uygun olanı seçebilirsin.
+    if isinstance(model_outputs, dict):
+        # demo: chatgpt ana model kabul edilsin
+        raw_answer = model_outputs.get("chatgpt") or str(model_outputs)
+    else:
+        raw_answer = str(model_outputs)
 
-    # 6) Etik olarak güçlendirilmiş cevap
-    base_model_key = "chatgpt"
-    if base_model_key not in model_outputs and model_outputs:
-        base_model_key = list(model_outputs.keys())[0]
+    advice_text = generate_advice(input_scores, output_scores, alignment_meta)
+    rewritten_text = generate_rewritten_answer(raw_answer, advice_text, alignment_meta)
 
-    base_output_text = model_outputs.get(base_model_key, "")
-    risk_flags = input_scores.get("risk_flags", []) or []
-
-    rewritten = rewrite_with_ethics(
-        original_text=base_output_text,
-        advice=advice,
-        risk_flags=risk_flags,
-    )
-
-    # 7) Log
+    # 6) Log
     log_event(
-        "analyze_completed_v5",
+        "analyze_completed_v10.2",
         {
             "query": text,
             "models_used": list(model_outputs.keys()),
             "input_scores": input_scores,
             "model_outputs": model_outputs,
             "output_scores": output_scores,
-            "alignment_result": alignment_result,
-            "advice": advice,
-            "rewritten_text": rewritten,
+            "alignment_meta": alignment_meta,
+            "advice": advice_text,
+            "rewritten_text": rewritten_text,
         },
     )
 
     risk_flags = input_scores.get("risk_flags", []) or []
     risk_level = input_scores.get("risk_level", "low")
 
+    # 7) Response JSON
     return {
         "language": input_scores.get("language"),
         "intents": input_scores.get("intent"),
@@ -257,10 +255,10 @@ async def analyze(req: AnalyzeRequest):
         "model_outputs": model_outputs,
         "output_scores": output_scores,
 
-        "alignment": alignment,
-        "alignment_result": alignment_result,
-        "advice": advice,
-        "rewritten_text": rewritten,
+        "alignment": alignment_label,      # UI burada sadece label'ı gösteriyor
+        "alignment_meta": alignment_meta,  # Gelişmiş bilgi (debug / ilerisi için)
+        "advice": advice_text,
+        "rewritten_text": rewritten_text,
     }
 
 

@@ -1,5 +1,6 @@
 import time
 from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi.responses import JSONResponse
 
 FAIL_THRESHOLD = 5
 OPEN_TIME = 10  # saniye

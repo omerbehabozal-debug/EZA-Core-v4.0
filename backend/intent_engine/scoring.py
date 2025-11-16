@@ -17,6 +17,7 @@ from .lexicon import (
     MANIPULATION_KEYWORDS,
     SENSITIVE_DATA_KEYWORDS,
     TOXICITY_KEYWORDS,
+    SENSITIVE_DATA_SIGNALS,
 )
 
 # Weight constants
@@ -111,6 +112,27 @@ def detect_purpose_hits(text: str) -> Dict[str, Dict[str, Any]]:
     return hits
 
 
+def detect_sensitive_data_hits(text: str) -> Dict[str, List[str]]:
+    """
+    Helper function to detect sensitive data hits for metadata.
+    Returns the sd_hits dictionary.
+    """
+    sd_hits: Dict[str, List[str]] = {
+        "id_numbers": [],
+        "personal_identifiers": [],
+        "relational_targets": [],
+        "lookup_patterns": []
+    }
+    
+    # Scan each category
+    for category, items in SENSITIVE_DATA_SIGNALS.items():
+        for item in items:
+            if item in text:
+                sd_hits[category].append(item)
+    
+    return sd_hits
+
+
 def compute_intent_scores(text: str) -> Dict[str, float]:
     """
     Compute per-intent scores based on action/target/purpose hits and special patterns.
@@ -202,8 +224,35 @@ def compute_intent_scores(text: str) -> Dict[str, float]:
         if has_hidden_purpose:
             scores["manipulation"] = min(scores["manipulation"] + 0.1, 1.0)
     
-    # Sensitive-data: keyword-based
-    if any(keyword in text for keyword in SENSITIVE_DATA_KEYWORDS):
+    # Sensitive-data: Level-3 Mega Patch v1.0 - Enhanced detection
+    # Use new sensitive_data_signals with weighted scoring
+    sd_hits = detect_sensitive_data_hits(text)
+    
+    # Scoring logic with weights
+    sens_score = 0.0
+    weight = {
+        "id_numbers": 0.60,
+        "personal_identifiers": 0.40,
+        "relational_targets": 0.25,
+        "lookup_patterns": 0.35
+    }
+    
+    for cat, hits in sd_hits.items():
+        if hits:
+            sens_score += len(hits) * weight[cat]
+    
+    # Cap at critical threshold
+    sens_score = min(sens_score, 1.0)
+    
+    # Strong rule: ID numbers always critical
+    if sd_hits["id_numbers"]:
+        sens_score = 1.0  # always critical
+    
+    # Set sensitive-data score
+    if sens_score > 0:
+        scores["sensitive-data"] = sens_score
+    # Fallback to old keyword-based detection
+    elif any(keyword in text for keyword in SENSITIVE_DATA_KEYWORDS):
         scores["sensitive-data"] = 0.7
     
     # Toxicity: only explicit insults

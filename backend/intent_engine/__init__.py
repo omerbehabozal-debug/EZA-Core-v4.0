@@ -21,6 +21,7 @@ from .lexicon import (
     MANIPULATION_KEYWORDS,
     SENSITIVE_DATA_KEYWORDS,
     TOXICITY_KEYWORDS,
+    SENSITIVE_DATA_SIGNALS,
 )
 from .scoring import (
     normalize_text,
@@ -29,6 +30,7 @@ from .scoring import (
     detect_purpose_hits,
     compute_intent_scores,
     fuse_risk,
+    detect_sensitive_data_hits,
 )
 
 
@@ -84,6 +86,16 @@ def analyze_intent(text: str, language: str = "unknown") -> Dict[str, Any]:
             if any(w in text_norm for w in ["kır", "kırmak", "kırar", "kirar", "hack", "hacklemek"]):
                 pattern_hits.append("wifi-illegal")
     
+    # Get sensitive data hits for metadata (Mega Patch v1.0)
+    sens_hits = detect_sensitive_data_hits(text_norm)
+    
+    # Force critical policy when ID number detected (Mega Patch v1.0)
+    if sens_hits.get("id_numbers") and len(sens_hits["id_numbers"]) > 0:
+        risk_score = 1.0
+        risk_level = "critical"
+        if "sensitive-data" not in risk_flags:
+            risk_flags.append("sensitive-data")
+    
     debug_notes = f"Primary: {primary} (score={max_score:.2f}), Risk: {risk_level} ({risk_score:.2f})"
     
     # 7) Return comprehensive dict
@@ -99,6 +111,7 @@ def analyze_intent(text: str, language: str = "unknown") -> Dict[str, Any]:
             "target_hits": target_hits,
             "purpose_hits": purpose_hits,
             "pattern_hits": pattern_hits,
+            "sens_hits": sens_hits,  # Mega Patch v1.0: sensitive data hits
             "debug_notes": debug_notes,
         },
     }

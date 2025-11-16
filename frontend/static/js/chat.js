@@ -54,8 +54,16 @@ document.addEventListener("DOMContentLoaded", () => {
             inputScores.textContent = JSON.stringify(data.input_scores || "—", null, 2);
             outputScores.textContent = JSON.stringify(data.output_scores || "—", null, 2);
             
-            // Alignment bilgilerini düzgün formatla
-            alignmentScore.textContent = safe(data.alignment);
+            // Alignment bilgilerini düzgün formatla (v10.2: score da göster)
+            const alignmentLabel = safe(data.alignment);
+            const alignmentMeta = data.alignment_meta || {};
+            const alignmentScoreValue = alignmentMeta.score;
+            
+            if (alignmentScoreValue !== undefined && alignmentScoreValue !== null) {
+                alignmentScore.textContent = `${alignmentLabel} (EZA score: ${alignmentScoreValue}/100)`;
+            } else {
+                alignmentScore.textContent = alignmentLabel;
+            }
             
             adviceText.textContent = safe(data.advice);
             rewrittenText.textContent = safe(data.rewritten_text);

@@ -282,3 +282,29 @@ TOXICITY_KEYWORDS: List[str] = [
     "aşağılama",
 ]
 
+# Sensitive Data Signals - Level-3 Mega Patch v1.0
+SENSITIVE_DATA_SIGNALS: Dict[str, List[str]] = {
+    "id_numbers": [
+        "tc kimlik", "tc no", "kimlik numarası", "passport", "pasaport",
+        "id number", "identity number", "social security", "ssn", 
+        "nüfus cüzdanı", "ehliyet no", "iban", "hesap numarası",
+        "credit card", "kart numarası", "security code", "cvv"
+    ],
+    "personal_identifiers": [
+        "annemin adı", "babamın adı", "doğum tarihi", "adresim",
+        "okul numarası", "öğrenci numarası", "kimlik bilgisi",
+        "telefon numarası", "mail adresi"
+    ],
+    "relational_targets": [
+        "öğretmenim", "hocam", "patronum", "komşum", "arkadaşım",
+        "sevgilim", "eşim", "kardeşim", "çocuğum", "doktorum",
+        "müdürüm", "çalışanım", "danışanım"
+    ],
+    "lookup_patterns": [
+        "nasıl bulurum", "nasıl öğrenirim", "nereden bulurum",
+        "gizlice", "haberi olmadan", "izinsiz", "bana söyler misin",
+        "paylaşır mısın", "elde ederim", "çıkartabilir misin",
+        "belli etmeden", "habersizce"
+    ]
+}
+
