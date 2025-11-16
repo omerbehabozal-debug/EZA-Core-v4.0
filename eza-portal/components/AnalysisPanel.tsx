@@ -9,8 +9,10 @@ export default function AnalysisPanel() {
 
   if (!analysis) {
     return (
-      <div className="p-4 text-neutral-400 text-sm">
-        ⓘ Mesaj gönderdikçe EZA analizleri burada görünecek.
+      <div className="w-full p-4">
+        <div className="text-neutral-500 text-sm">
+          ⓘ Analiz sonuçları burada görünecek.
+        </div>
       </div>
     );
   }
@@ -18,58 +20,66 @@ export default function AnalysisPanel() {
   // Standalone mod: eski /analyze response
   if (engineMode === "standalone") {
     return (
-      <div className="p-4 space-y-4 text-sm">
-        <h2 className="text-lg font-semibold">Etik Analiz (Standalone)</h2>
-
-        <div className="bg-neutral-900 p-3 rounded-lg">
-          <p>
-            <b>EZA Skoru:</b>{" "}
+      <div className="w-full p-4 space-y-4">
+        {/* EZA Score */}
+        <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
+          <h3 className="text-neutral-300 text-sm">EZA Skoru</h3>
+          <p className="text-2xl font-semibold mt-1">
             {analysis.eza_score?.eza_score ?? analysis.eza_score ?? "—"}
           </p>
         </div>
 
+        {/* Intent */}
         {analysis.intent && (
-          <div className="bg-neutral-900 p-3 rounded-lg">
-            <p>
-              <b>Niyet seviyesi:</b> {analysis.intent.level ?? "—"}
+          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
+            <h3 className="text-neutral-300 text-sm">Niyet Analizi</h3>
+            <p className="text-lg font-medium mt-1">
+              {analysis.intent.level ?? "—"}
             </p>
-            <p>
-              <b>Özet:</b> {analysis.intent.summary ?? "—"}
+            <p className="text-neutral-400 text-xs mt-1">
+              {analysis.intent.summary ?? "—"}
             </p>
           </div>
         )}
 
+        {/* Bias */}
         {analysis.critical_bias && (
-          <div className="bg-neutral-900 p-3 rounded-lg">
-            <p>
-              <b>Bias seviyesi:</b> {analysis.critical_bias.level ?? "—"}
+          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
+            <h3 className="text-neutral-300 text-sm">Bias Analizi</h3>
+            <p className="text-lg font-medium mt-1">
+              {analysis.critical_bias.level ?? "—"}
             </p>
-            <p>
-              <b>Bias skor:</b> {analysis.critical_bias.bias_score ?? "—"}
+            <p className="text-neutral-400 text-xs mt-1">
+              Skor: {analysis.critical_bias.bias_score ?? "—"}
             </p>
           </div>
         )}
 
+        {/* Abuse */}
         {analysis.abuse && (
-          <div className="bg-neutral-900 p-3 rounded-lg">
-            <p>
-              <b>Abuse seviyesi:</b> {analysis.abuse.level ?? "—"}
+          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
+            <h3 className="text-neutral-300 text-sm">Abuse Analizi</h3>
+            <p className="text-lg font-medium mt-1">
+              {analysis.abuse.level ?? "—"}
             </p>
           </div>
         )}
 
+        {/* Moral Compass */}
         {analysis.moral_compass && (
-          <div className="bg-neutral-900 p-3 rounded-lg">
-            <p>
-              <b>Moral Compass:</b> {analysis.moral_compass.level ?? "—"}
+          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
+            <h3 className="text-neutral-300 text-sm">Moral Compass</h3>
+            <p className="text-lg font-medium mt-1">
+              {analysis.moral_compass.level ?? "—"}
             </p>
           </div>
         )}
 
+        {/* Memory Consistency */}
         {analysis.memory_consistency && (
-          <div className="bg-neutral-900 p-3 rounded-lg">
-            <p>
-              <b>Memory Consistency:</b>{" "}
+          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
+            <h3 className="text-neutral-300 text-sm">Memory Consistency</h3>
+            <p className="text-lg font-medium mt-1">
               {analysis.memory_consistency.level ?? "—"}
             </p>
           </div>
@@ -83,76 +93,78 @@ export default function AnalysisPanel() {
   const output = analysis.output_analysis;
 
   return (
-    <div className="p-4 space-y-4 text-sm">
-      <h2 className="text-lg font-semibold">
-        Etik Analiz (Proxy Mode — {depthMode.toUpperCase()})
+    <div className="w-full p-4 space-y-4">
+      <h2 className="text-lg font-semibold mb-2">
+        Etik Analiz (Proxy — {depthMode.toUpperCase()})
       </h2>
 
       {/* Input analizi */}
       {input && (
-        <div className="bg-neutral-900 p-3 rounded-lg space-y-1">
-          <p className="font-semibold text-neutral-200">Input Analizi</p>
-          <p>
-            <b>EZA Skoru:</b>{" "}
-            {input.eza_score?.eza_score ?? input.eza_score ?? "—"}
-          </p>
-          {input.intent && (
-            <p>
-              <b>Niyet:</b> {input.intent.level ?? "—"}
+        <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow space-y-2">
+          <h3 className="text-neutral-300 text-sm font-semibold">Input Analizi</h3>
+          <div>
+            <p className="text-xs text-neutral-400">EZA Skoru</p>
+            <p className="text-lg font-medium">
+              {input.eza_score?.eza_score ?? input.eza_score ?? "—"}
             </p>
+          </div>
+          {input.intent && (
+            <div>
+              <p className="text-xs text-neutral-400">Niyet</p>
+              <p className="text-sm">{input.intent.level ?? "—"}</p>
+            </div>
           )}
           {input.abuse && (
-            <p>
-              <b>Abuse:</b> {input.abuse.level ?? "—"}
-            </p>
+            <div>
+              <p className="text-xs text-neutral-400">Abuse</p>
+              <p className="text-sm">{input.abuse.level ?? "—"}</p>
+            </div>
           )}
           {input.critical_bias && (
-            <p>
-              <b>Bias:</b> {input.critical_bias.level ?? "—"}
-            </p>
+            <div>
+              <p className="text-xs text-neutral-400">Bias</p>
+              <p className="text-sm">{input.critical_bias.level ?? "—"}</p>
+            </div>
           )}
         </div>
       )}
 
-      {/* Output analizi (sadece deep ise dolu olabilir) */}
+      {/* Output analizi */}
       {output ? (
-        <div className="bg-neutral-900 p-3 rounded-lg space-y-1">
-          <p className="font-semibold text-neutral-200">Output Analizi</p>
-          <p>
-            <b>EZA Skoru:</b>{" "}
-            {output.eza_score?.eza_score ?? output.eza_score ?? "—"}
-          </p>
-          {output.intent && (
-            <p>
-              <b>Niyet:</b> {output.intent.level ?? "—"}
+        <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow space-y-2">
+          <h3 className="text-neutral-300 text-sm font-semibold">Output Analizi</h3>
+          <div>
+            <p className="text-xs text-neutral-400">EZA Skoru</p>
+            <p className="text-lg font-medium">
+              {output.eza_score?.eza_score ?? output.eza_score ?? "—"}
             </p>
+          </div>
+          {output.intent && (
+            <div>
+              <p className="text-xs text-neutral-400">Niyet</p>
+              <p className="text-sm">{output.intent.level ?? "—"}</p>
+            </div>
           )}
           {output.abuse && (
-            <p>
-              <b>Abuse:</b> {output.abuse.level ?? "—"}
-            </p>
+            <div>
+              <p className="text-xs text-neutral-400">Abuse</p>
+              <p className="text-sm">{output.abuse.level ?? "—"}</p>
+            </div>
           )}
           {output.critical_bias && (
-            <p>
-              <b>Bias:</b> {output.critical_bias.level ?? "—"}
-            </p>
+            <div>
+              <p className="text-xs text-neutral-400">Bias</p>
+              <p className="text-sm">{output.critical_bias.level ?? "—"}</p>
+            </div>
           )}
         </div>
       ) : (
-        <div className="bg-neutral-900 p-3 rounded-lg text-neutral-400">
+        <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow text-neutral-400 text-xs">
           {depthMode === "fast"
             ? "Fast Mode: Çıkış analizi minimal veya atlanmış olabilir."
             : "Output analizi mevcut değil."}
         </div>
       )}
-
-      <div className="bg-neutral-900 p-3 rounded-lg text-xs text-neutral-400">
-        <p>
-          Not: Proxy Mode'da EZA hem kullanıcı input'unu hem de seçilen LLM'in
-          cevabını analiz eder. Deep Mode'da çift taraflı analiz tam kapsamlı
-          çalışır.
-        </p>
-      </div>
     </div>
   );
 }

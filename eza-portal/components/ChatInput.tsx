@@ -83,23 +83,20 @@ export default function ChatInput() {
   }
 
   return (
-    <div className="flex gap-2 p-4 border-t border-neutral-800">
+    <div className="p-4 border-t border-neutral-800 flex gap-3 items-center bg-[#0F1418]">
       <input
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && send()}
-        className="flex-1 p-3 bg-neutral-900 text-neutral-100 rounded-lg outline-none"
-        placeholder={
-          engineMode === "proxy"
-            ? "Mesaj yaz (EZA Proxy + LLM)..."
-            : "Mesaj yaz (sadece EZA-Core)..."
-        }
+        onKeyDown={(e) => e.key === "Enter" && message && send()}
+        placeholder="Mesaj yaz..."
+        className="flex-1 px-4 py-3 rounded-xl bg-[#13171D] border border-neutral-700 outline-none focus:border-blue-500 transition"
+        disabled={loading}
       />
 
       <button
-        onClick={send}
-        disabled={loading}
-        className="bg-blue-600 disabled:opacity-60 px-4 rounded-lg"
+        onClick={() => message && send()}
+        disabled={loading || !message.trim()}
+        className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 transition shadow disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {loading ? "Gönderiliyor..." : "Gönder"}
       </button>

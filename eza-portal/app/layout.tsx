@@ -1,8 +1,12 @@
 import "./globals.css";
+import { Inter, JetBrains_Mono } from "next/font/google";
+
+const inter = Inter({ subsets: ["latin"] });
+const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata = {
   title: "EZA Portal",
-  description: "Etik Zekâ Platformu"
+  description: "Ethical Zekâ Arayüzü"
 };
 
 export default function RootLayout({
@@ -11,8 +15,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="tr">
-      <body>{children}</body>
+    <html lang="tr" className="dark">
+      <body
+        className={`${inter.className} bg-[#0D0F12] text-white h-screen overflow-hidden`}
+      >
+        {children}
+      </body>
     </html>
   );
 }
