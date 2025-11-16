@@ -225,6 +225,7 @@ async def analyze(req: AnalyzeRequest):
 
     # 7) Log kaydı
     log_event(
+        "analyze_completed",
         {
             "query": text,
             "models_used": list(model_outputs.keys()),

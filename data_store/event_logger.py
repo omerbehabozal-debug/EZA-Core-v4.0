@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from datetime import datetime
 from backend.infra.supabase_client import insert_event
 
@@ -5,6 +6,7 @@ from backend.infra.supabase_client import insert_event
 def log_event(event_type: str, payload: dict):
     """
     Supabase event_logs tablosuna kayıt ekler.
+    Supabase yapılandırılmamışsa sessizce devam eder.
     """
 
     data = {
@@ -13,4 +15,9 @@ def log_event(event_type: str, payload: dict):
         "created_at": datetime.utcnow().isoformat()
     }
 
-    return insert_event("event_logs", data)
+    try:
+        return insert_event("event_logs", data)
+    except Exception:
+        # Supabase yapılandırılmamışsa veya hata oluşursa sessizce devam et
+        pass
+    return None
