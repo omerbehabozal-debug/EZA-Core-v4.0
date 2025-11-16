@@ -32,6 +32,11 @@ class VerdictEngine:
         abuse_level = str(abuse.get("level", "low"))
         abuse_score = float(abuse.get("score", 0.0))
         
+        # LEVEL 10 – Memory Consistency Engine
+        mem = report.get("memory_consistency") or {}
+        mem_level = str(mem.get("level", "low"))
+        mem_score = float(mem.get("score", 0.0))
+        
         # Initialize verdict dict
         verdict = {
             "level": "safe",
@@ -160,6 +165,26 @@ class VerdictEngine:
 
         verdict["abuse_level"] = abuse_level
         verdict["abuse_score"] = round(abuse_score, 4)
+        
+        # LEVEL 10 – Memory Consistency etkisi
+        mem_high = mem_level in {"high", "critical"} or mem_score >= 0.6
+
+        if mem_high:
+            lvl = verdict.get("level", "safe").lower()
+
+            if lvl == "safe":
+                verdict["level"] = "caution"
+                verdict["reason"] += " | Memory Engine: uzun dönem tutarsızlık tespit edildi."
+            elif lvl == "caution":
+                verdict["level"] = "unsafe"
+                verdict["reason"] += " | Memory Engine: tutarsızlık seviyesi yüksek."
+            else:
+                verdict["reason"] += " | Memory Engine: ciddi hafıza tutarsızlığı algılandı."
+
+            verdict.setdefault("flags", []).append("memory-inconsistency")
+
+        verdict["memory_consistency_level"] = mem_level
+        verdict["memory_consistency_score"] = round(mem_score, 4)
         
         return verdict
 

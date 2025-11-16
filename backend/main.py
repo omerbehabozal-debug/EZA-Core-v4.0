@@ -32,6 +32,7 @@ from backend.api.behavior_correlation import BehaviorCorrelationModel
 from backend.api.critical_bias_engine import CriticalBiasEngine
 from backend.api.moral_compass_engine import MoralCompassEngine
 from backend.api.abuse_engine import AbuseEngine
+from backend.api.memory_consistency_engine import MemoryConsistencyEngine
 from backend.api.utils.model_runner import (
     call_single_model,
     call_multi_models,
@@ -116,6 +117,10 @@ if not hasattr(app.state, "moral_compass_engine"):
 # --- LEVEL 9 – Abuse & Coercion Engine ---
 if not hasattr(app.state, "abuse_engine"):
     app.state.abuse_engine = AbuseEngine()
+
+# --- LEVEL 10 – Memory Consistency Engine ---
+if not hasattr(app.state, "memory_consistency_engine"):
+    app.state.memory_consistency_engine = MemoryConsistencyEngine()
 
 # --- Middleware Katmanı ---
 app.add_middleware(RequestLoggerMiddleware)
@@ -779,6 +784,48 @@ async def analyze(req: AnalyzeRequest, request: Request):
         }
 
     report["abuse"] = abuse
+
+    # LEVEL 10 – Memory Consistency Engine
+    try:
+        mem_engine = request.app.state.memory_consistency_engine
+
+        # Build memory_context from narrative engine
+        memory_context = None
+        if hasattr(request.app.state, "narrative") and request.app.state.narrative is not None:
+            narrative_memory = getattr(request.app.state.narrative, "memory", [])
+            if narrative_memory:
+                past_user_messages = [m.get("text", "") for m in narrative_memory if m.get("role") == "user"]
+                past_model_messages = [m.get("text", "") for m in narrative_memory if m.get("role") == "assistant"]
+                memory_context = {
+                    "past_user_messages": past_user_messages,
+                    "past_model_messages": past_model_messages,
+                }
+        
+        # Fallback to report memory_context if available
+        if not memory_context:
+            memory_context = report.get("memory_context")
+        
+        model_outputs = report.get("model_outputs", {})
+
+        memory_consistency = mem_engine.analyze(
+            memory_context=memory_context,
+            model_outputs=model_outputs,
+        )
+    except Exception as exc:
+        memory_consistency = {
+            "score": 0.0,
+            "level": "low",
+            "dimensions": {
+                "policy_consistency": 0.0,
+                "self_contradiction": 0.0,
+                "knowledge_drift": 0.0,
+                "user_fact_inconsistency": 0.0,
+            },
+            "flags": ["memory-engine-error"],
+            "summary": f"MemoryConsistencyEngine hatası: {exc}",
+        }
+
+    report["memory_consistency"] = memory_consistency
 
     # EZA Level-5 Upgrade: Compute drift matrix, EZA score, and final verdict
     # Enhance memory entries with report data for drift analysis

@@ -29,7 +29,9 @@ class EZAScore:
             # LEVEL 8 – Moral Compass Engine
             "moral_compass": 0.10,
             # LEVEL 9 – Abuse & Coercion Engine
-            "abuse": 0.10
+            "abuse": 0.10,
+            # LEVEL 10 – Memory Consistency Engine
+            "memory_consistency": 0.08
         }
 
     def compute(self, report, drift_matrix):
@@ -104,15 +106,20 @@ class EZAScore:
         abuse = report.get("abuse") or {}
         abuse_score = float(abuse.get("score", 0.0))
 
-        # Compute final score with optional Level-6, Level-7, Level-8, and Level-9 fields
+        # LEVEL 10 – Memory Consistency Engine
+        mem = report.get("memory_consistency") or {}
+        mem_score = float(mem.get("score", 0.0))
+
+        # Compute final score with optional Level-6, Level-7, Level-8, Level-9, and Level-10 fields
         # If new fields are missing, use original weights (backward compatible)
         has_level6 = (deception_data or psych_pressure_data or legal_risk_data)
         has_level7 = critical_bias and isinstance(critical_bias, dict) and critical_bias.get("bias_score") is not None
         has_level8 = moral_compass and isinstance(moral_compass, dict) and moral_compass.get("score") is not None
         has_level9 = abuse and isinstance(abuse, dict) and abuse.get("score") is not None
+        has_level10 = mem and isinstance(mem, dict) and mem.get("score") is not None
         
-        if has_level6 or has_level7 or has_level8 or has_level9:
-            # Use updated weights with Level-6 and Level-7 fields
+        if has_level6 or has_level7 or has_level8 or has_level9 or has_level10:
+            # Use updated weights with Level-6, Level-7, Level-8, Level-9, and Level-10 fields
             total_score = (
                 intent_score * self.weights["intent"]
                 + identity_score * self.weights["identity"]
@@ -137,6 +144,10 @@ class EZAScore:
             if has_level9:
                 total_score += abuse_score * self.weights["abuse"]
             
+            # Add memory_consistency if available
+            if has_level10:
+                total_score += mem_score * self.weights["memory_consistency"]
+            
             # Normalize by total weight used (for backward compatibility)
             total_weight = (
                 self.weights["intent"]
@@ -155,6 +166,8 @@ class EZAScore:
                 total_weight += self.weights["moral_compass"]
             if has_level9:
                 total_weight += self.weights["abuse"]
+            if has_level10:
+                total_weight += self.weights["memory_consistency"]
             
             # Normalize to keep score in 0-1 range
             if total_weight > 0:
@@ -178,7 +191,7 @@ class EZAScore:
         }
         
         # Add component scores for debugging
-        if has_level6 or has_level7 or has_level8 or has_level9:
+        if has_level6 or has_level7 or has_level8 or has_level9 or has_level10:
             result["components"] = {
                 "intent": round(intent_score, 4),
                 "identity": round(identity_score, 4),
@@ -196,6 +209,8 @@ class EZAScore:
                 result["components"]["moral_compass"] = round(moral_compass_score, 4)
             if has_level9:
                 result["components"]["abuse"] = round(abuse_score, 4)
+            if has_level10:
+                result["components"]["memory_consistency"] = round(mem_score, 4)
 
         return result
 
