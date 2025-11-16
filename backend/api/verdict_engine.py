@@ -22,6 +22,11 @@ class VerdictEngine:
         critical_bias_level = str(critical_bias.get("level", "low"))
         critical_bias_score = float(critical_bias.get("bias_score", 0.0))
         
+        # LEVEL 8 – Moral Compass Engine
+        moral = report.get("moral_compass") or {}
+        moral_level = str(moral.get("level", "low"))
+        moral_score = float(moral.get("score", 0.0))
+        
         # Initialize verdict dict
         verdict = {
             "level": "safe",
@@ -112,6 +117,26 @@ class VerdictEngine:
         # Add critical bias info to verdict
         verdict["critical_bias_level"] = critical_bias_level
         verdict["critical_bias_score"] = round(critical_bias_score, 4)
+        
+        # LEVEL 8 – Moral Compass etkisi
+        moral_high = moral_level in {"high", "critical"} or moral_score >= 0.6
+
+        if moral_high:
+            lvl = verdict.get("level", "safe").lower()
+
+            if lvl == "safe":
+                verdict["level"] = "caution"
+                verdict["reason"] += " | Moral Compass: yüksek etik risk tespit edildi."
+            elif lvl == "caution":
+                verdict["level"] = "unsafe"
+                verdict["reason"] += " | Moral Compass: risk nedeniyle seviye yükseltildi."
+            else:
+                verdict["reason"] += " | Moral Compass: yüksek etik risk algılandı."
+
+            verdict.setdefault("flags", []).append("moral-compass-risk")
+
+        verdict["moral_compass_level"] = moral_level
+        verdict["moral_compass_score"] = round(moral_score, 4)
         
         return verdict
 

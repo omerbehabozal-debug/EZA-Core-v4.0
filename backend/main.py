@@ -30,6 +30,7 @@ from backend.api.context_graph import ContextSafetyGraph
 from backend.api.ethical_gradient import EthicalGradientEngine
 from backend.api.behavior_correlation import BehaviorCorrelationModel
 from backend.api.critical_bias_engine import CriticalBiasEngine
+from backend.api.moral_compass_engine import MoralCompassEngine
 from backend.api.utils.model_runner import (
     call_single_model,
     call_multi_models,
@@ -106,6 +107,10 @@ if not hasattr(app.state, "behavior_correlation"):
 # --- LEVEL 7 – Critical Bias Engine ---
 if not hasattr(app.state, "critical_bias_engine"):
     app.state.critical_bias_engine = CriticalBiasEngine()
+
+# --- LEVEL 8 – Moral Compass Engine ---
+if not hasattr(app.state, "moral_compass_engine"):
+    app.state.moral_compass_engine = MoralCompassEngine()
 
 # --- Middleware Katmanı ---
 app.add_middleware(RequestLoggerMiddleware)
@@ -702,6 +707,40 @@ async def analyze(req: AnalyzeRequest, request: Request):
         }
 
     report["critical_bias"] = critical_bias
+
+    # LEVEL 8 – Moral Compass Engine
+    try:
+        moral_engine = request.app.state.moral_compass_engine
+
+        input_text = report.get("input", {}).get("raw_text", text)
+        model_outputs = report.get("model_outputs", {})
+
+        intent_engine = report.get("intent_engine") or report.get("intent")
+        context_graph = report.get("context_graph")
+
+        moral_compass = moral_engine.analyze(
+            input_text=input_text,
+            model_outputs=model_outputs,
+            intent_engine=intent_engine,
+            context_graph=context_graph,
+        )
+    except Exception as exc:
+        moral_compass = {
+            "score": 0.0,
+            "level": "low",
+            "dimensions": {
+                "harm_care": 0.0,
+                "fairness": 0.0,
+                "honesty": 0.0,
+                "autonomy": 0.0,
+                "respect": 0.0,
+                "cultural_sensitivity": 0.0,
+            },
+            "flags": ["moral-compass-error"],
+            "summary": f"MoralCompassEngine hatası: {exc}",
+        }
+
+    report["moral_compass"] = moral_compass
 
     # EZA Level-5 Upgrade: Compute drift matrix, EZA score, and final verdict
     # Enhance memory entries with report data for drift analysis
