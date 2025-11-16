@@ -155,9 +155,8 @@ async def index(request: Request):
 
 
 # -------------------------------------------------
-# /analyze – Tam E2E etik analiz
+# /analyze – Tam E2E etik analiz (EZA-Core v5)
 #  - chat.js burayı kullanır
-#  - api_test.py de burayı test eder
 # -------------------------------------------------
 
 @app.post("/analyze")
@@ -165,133 +164,108 @@ async def analyze(req: AnalyzeRequest):
     text = req.text or req.query or ""
     model = (req.model or "chatgpt").lower()
 
-    # 1) Input analizi
+    # 1) Input analizi (niyet + risk + duygu)
     input_scores: Dict[str, Any] = analyze_input(text)
 
-    # 2) Model cevabını al
+    # 2) Model cevabını al (simülasyon)
     if model == "multi":
         model_outputs = call_multi_models(text)
     else:
         out = call_single_model(text, model_name=model)
         model_outputs = {model: out}
 
-    # 3) Output analizi (çoklu model ortalaması)
-    # Her model çıktısı için ayrı ayrı analiz yap
-    output_analyses = {}
+    # 3) Output analizi – ilk model üzerinden
+    output_analyses: Dict[str, Any] = {}
     for model_name, output_text in model_outputs.items():
         output_analyses[model_name] = analyze_output(output_text, model=model_name)
-    
-    # İlk modelin analizini ana output_scores olarak kullan (veya birleştirilmiş analiz)
-    if output_analyses and len(output_analyses) > 0:
-        output_scores = output_analyses[list(model_outputs.keys())[0]]
+
+    if output_analyses:
+        first_key = list(output_analyses.keys())[0]
+        output_scores = output_analyses[first_key]
     else:
-        # Fallback: create empty output_scores structure
         output_scores = {
             "ok": True,
             "model": "unknown",
             "output_text": "",
+            "risk_flags": [],
+            "risk_score": 0.0,
+            "risk_level": "low",
+            "emotional_tone": "neutral",
             "analysis": {
                 "quality_score": 50,
-                "helpfulness": "Bilinmiyor",
+                "helpfulness": "Varsayılan analiz.",
                 "safety_issues": [],
                 "policy_violations": [],
-                "summary": "Varsayılan analiz (fallback)"
+                "summary": "Fallback output analysis.",
             },
             "error": None,
         }
 
-    # 4) Alignment hesabı
+    # 4) Alignment hesabı (EZA v5)
     alignment_result = compute_alignment(
         input_analysis=input_scores,
         output_analysis=output_scores,
     )
-    
-    # Ensure alignment_result is always a valid dict
-    if not alignment_result or not isinstance(alignment_result, dict):
-        alignment_result = {
-            "alignment": "Unknown",
-            "advice": "Analiz yapılamadı. Lütfen tekrar deneyin.",
-            "enhanced_answer": ""
-        }
-    
-    # Extract values from new format
     alignment = alignment_result.get("alignment", "Unknown")
-    advice = alignment_result.get("advice", "Analiz yapılamadı. Lütfen tekrar deneyin.")
-    enhanced_answer = alignment_result.get("enhanced_answer", "")
 
-    # 5) EZA tavsiyesi - alignment_result'dan alınan advice kullanılıyor
-    # Eğer generate_advice hala çağrılmak isteniyorsa, advice'ı override edebiliriz
-    # Şimdilik alignment_result'dan gelen advice kullanılıyor
+    # 5) EZA tavsiyesi
+    advice = generate_advice(
+        input_analysis=input_scores,
+        output_analysis=output_scores,
+        alignment_result=alignment_result,
+    )
 
     # 6) Etik olarak güçlendirilmiş cevap
-    #   (multi durumda baz modeli chatgpt alıyoruz, yoksa ilk modeli)
     base_model_key = "chatgpt"
-    if not model_outputs or base_model_key not in model_outputs:
-        if model_outputs and len(model_outputs) > 0:
-            base_model_key = list(model_outputs.keys())[0]
-        else:
-            base_model_key = None
-    
-    # enhanced_answer varsa onu kullan, yoksa rewrite_with_ethics ile oluştur
-    if enhanced_answer and enhanced_answer.strip():
-        rewritten = enhanced_answer
-    else:
-        if base_model_key and base_model_key in model_outputs:
-            rewritten = rewrite_with_ethics(model_outputs[base_model_key], advice)
-        else:
-            rewritten = rewrite_with_ethics("", advice)
-    
-    if not rewritten or not rewritten.strip():
-        rewritten = f"Etik olarak güçlendirilmiş cevap: {advice}"
-    
-    # Advice boş string kontrolü
-    advice = advice or "No advice generated."
+    if base_model_key not in model_outputs and model_outputs:
+        base_model_key = list(model_outputs.keys())[0]
 
-    # 7) Log kaydı
+    base_output_text = model_outputs.get(base_model_key, "")
+    risk_flags = input_scores.get("risk_flags", []) or []
+
+    rewritten = rewrite_with_ethics(
+        original_text=base_output_text,
+        advice=advice,
+        risk_flags=risk_flags,
+    )
+
+    # 7) Log
     log_event(
-        "analyze_completed",
+        "analyze_completed_v5",
         {
             "query": text,
             "models_used": list(model_outputs.keys()),
             "input_scores": input_scores,
             "model_outputs": model_outputs,
             "output_scores": output_scores,
-            "alignment": alignment,
+            "alignment_result": alignment_result,
             "advice": advice,
             "rewritten_text": rewritten,
-        }
+        },
     )
 
-    # 8) Response
-    #    - testler için: language, intents, risk_level top-level
-    #    - frontend için: input_scores, model_outputs, output_scores...
-    input_analysis = input_scores.get("analysis", {}) if input_scores else {}
-    risk_flags = input_analysis.get("risk_flags", [])
-    risk_level = "high" if risk_flags else "low"
-    
-    # enhanced_answer kontrolü - rewritten_text olarak döndürülüyor
-    if not rewritten or not rewritten.strip():
-        rewritten = "Etik olarak güçlendirilmiş cevap: Bu konuda en güvenli yaklaşım güçlü şifre, 2FA, VPN ve dikkatli veri paylaşımıdır."
-    
+    risk_flags = input_scores.get("risk_flags", []) or []
+    risk_level = input_scores.get("risk_level", "low")
+
     return {
-        "language": input_analysis.get("language"),
-        "intents": input_analysis.get("intent"),
+        "language": input_scores.get("language"),
+        "intents": input_scores.get("intent"),
         "risk_level": risk_level,
-        
+        "risk_flags": risk_flags,
+
         "input_scores": input_scores,
         "model_outputs": model_outputs,
         "output_scores": output_scores,
-        
+
         "alignment": alignment,
+        "alignment_result": alignment_result,
         "advice": advice,
         "rewritten_text": rewritten,
     }
 
 
 # -------------------------------------------------
-# /pair – Sadece soru + cevap uyumu testi
-#  - pair_trainer_test.py burayı değil, core fonksiyonları test ediyor
-#  - Ama API olarak da sunuyoruz
+# /pair – Sadece soru + cevap uyumu testi (v5)
 # -------------------------------------------------
 
 @app.post("/pair")
@@ -305,8 +279,9 @@ async def pair(req: PairRequest):
     )
 
     return {
-        "alignment_score": alignment_result.get("alignment_score", 0),
+        "alignment_score": alignment_result.get("alignment_score", 0.0),
         "alignment_label": alignment_result.get("verdict", "unknown"),
+        "details": alignment_result.get("details", {}),
     }
 
 

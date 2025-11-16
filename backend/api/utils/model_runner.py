@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # backend/api/utils/model_runner.py
 
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 
 def call_single_model(
     text: Optional[str] = None,
@@ -50,23 +50,56 @@ def call_multi_models(text: str) -> Dict[str, str]:
         for model in models
     }
 
-def rewrite_with_ethics(original_text: str, advice: str) -> str:
+def rewrite_with_ethics(
+    original_text: str,
+    advice: str,
+    risk_flags: Optional[List[str]] = None,
+) -> str:
     """
-    Etik olarak güçlendirilmiş cevap oluşturur.
+    Etik olarak güçlendirilmiş cevap oluşturur – EZA-Core v5.
+
+    risk_flags:
+        - self-harm → krize duyarlı, destek odaklı mesaj
+        - illegal / violence / manipulation → yönlendirici, zararı azaltıcı mesaj
+        - aksi halde: orijinal cevabı etik çerçeveyle güçlendir.
     """
-    # Ensure parameters are always strings
     if original_text is None:
         original_text = ""
     if advice is None:
         advice = ""
-    
-    # Convert to string if not already
-    original_text = str(original_text)
-    advice = str(advice)
-    
+
+    risk_flags = risk_flags or []
+
+    # Self-harm özel senaryosu
+    if "self-harm" in risk_flags:
+        return (
+            "Bu mesaj, kendine zarar verme veya intihar düşüncelerini içerebilir. "
+            "Böyle hissetmek çok zor olabilir, fakat yalnız değilsiniz. "
+            "Buradan genel bilgiler verebilirim; ancak profesyonel destek almak çok daha önemlidir. "
+            "Lütfen güvendiğiniz biriyle konuşun ve bulunduğunuz ülkedeki acil yardım hatlarıyla "
+            "veya bir ruh sağlığı uzmanıyla en kısa sürede iletişime geçin."
+        )
+
+    # Yasa dışı, şiddet veya manipülasyon içeren riskli içerikler için
+    if any(flag in risk_flags for flag in ["illegal", "violence", "manipulation"]):
+        return (
+            "Bu isteğe doğrudan yardım edemem çünkü şiddet, yasa dışı faaliyetler veya "
+            "başkalarına zarar verebilecek davranışlar etik değildir. "
+            "Bunun yerine, sorunları yasal, güvenli ve saygılı yollarla çözmeye odaklanmak en doğrusudur. "
+            "Aşağıda, daha güvenli bir yaklaşım için genel bir yönlendirme bulabilirsiniz:\n\n"
+            f"Etik Tavsiye:\n{advice}"
+        )
+
+    # Diğer tüm durumlar için – orijinal cevabı etik çerçeveyle güçlendir
+    original_text = str(original_text).strip()
+    advice = str(advice).strip()
+
     return (
-        f"Orijinal Cevap:\n{original_text}\n\n"
-        f"Etik Tavsiye:\n{advice}\n\n"
-        f"Etik Olarak Güçlendirilmiş Cevap:\n"
-        f"{original_text} (Etik yönergelere göre güçlendirilmiştir.)"
+        "Orijinal Cevap:\n"
+        f"{original_text or 'Model cevabı simülasyon modunda.'}\n\n"
+        "Etik Perspektif:\n"
+        f"{advice or 'Bu içerik için özel bir risk tespit edilmedi.'}\n\n"
+        "Etik Olarak Güçlendirilmiş Cevap:\n"
+        f"{original_text or 'Model cevabı'}\n"
+        "— Bu cevap, kullanıcı güvenliği ve saygılı iletişim ilkeleri gözetilerek değerlendirilmiştir."
     )

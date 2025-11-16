@@ -1,171 +1,109 @@
 # -*- coding: utf-8 -*-
 """
-output_analyzer.py
-------------------
-Model çıktısını kalite ve risk açısından analiz eden katman.
+output_analyzer.py – EZA-Core v5
+Model çıktısını kalite, güvenlik ve risk açısından analiz eder.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List
 
-from backend.api.utils import call_single_model
 from data_store.event_logger import log_event
 
-
-def _system_prompt_output() -> str:
-    return (
-        "Sen EZA-Core için çalışan bir 'Output Analyzer'sın.\n"
-        "Verilen model çıktısını hem kalite hem de güvenlik açısından incelersin.\n\n"
-        "JSON formatında cevap ver:\n"
-        "{\n"
-        '  "quality_score": 0-100,\n'
-        '  "helpfulness": "kısa açıklama",\n'
-        '  "safety_issues": ["hate", "self_harm", ...],\n'
-        '  "policy_violations": ["policy_x", ...],\n'
-        '  "summary": "1-2 cümle değerlendirme"\n'
-        "}"
-    )
+from .input_analyzer import (
+    compute_risk_flags,
+    detect_emotional_tone,
+)
 
 
-def _system_prompt_evaluator() -> str:
-    return (
-        "Sen EZA-Core için çalışan bir 'Output Evaluator'sın.\n"
-        "Görevin, verilen metni belirli kriterlere göre puanlamaktır.\n\n"
-        "JSON formatında cevap ver:\n"
-        "{\n"
-        '  "score": 0-100,\n'
-        '  "verdict": "accept / review / reject",\n'
-        '  "reasons": ["kısa neden 1", "kısa neden 2"]\n'
-        "}"
-    )
-
-
-def analyze_output(
-    output_text: str,
-    model: str = "gpt-4o",
-) -> Dict[str, Any]:
+def _base_analysis(text: str) -> Dict[str, Any]:
     """
-    Model çıktısını genel kalite + güvenlik açısından analiz eder.
+    Ortak analiz fonksiyonu – input ile benzer risk motorunu kullanır.
     """
-    payload = {
-        "stage": "output_analyzer",
-        "model": model,
-        "output_preview": output_text[:200],
+    risk_info = compute_risk_flags(text)
+    emotional_tone = detect_emotional_tone(text)
+
+    risk_flags = risk_info["risk_flags"]
+    risk_score = risk_info["risk_score"]
+
+    risk_level = "low"
+    if risk_score >= 0.9:
+        risk_level = "critical"
+    elif risk_score >= 0.7:
+        risk_level = "high"
+    elif risk_score >= 0.4:
+        risk_level = "medium"
+
+    safety_issues: List[str] = risk_flags.copy()
+
+    analysis = {
+        "quality_score": 85,
+        "helpfulness": "Model çıktısı genel olarak anlaşılır.",
+        "safety_issues": safety_issues,
+        "policy_violations": [],
+        "summary": "Çıktı analizi tamamlandı.",
     }
 
+    return {
+        "risk_flags": risk_flags,
+        "risk_score": risk_score,
+        "risk_level": risk_level,
+        "emotional_tone": emotional_tone,
+        "analysis": analysis,
+    }
+
+
+def analyze_output(output_text: str, model: str = "chatgpt") -> Dict[str, Any]:
+    """
+    Model çıktısının etik / güvenlik analizi.
+    """
     try:
-        system_prompt = _system_prompt_output()
-        user_prompt = (
-            "Aşağıdaki model çıktısını analiz et ve belirtilen JSON formatında cevap ver:\n\n"
-            f"'''{output_text}'''"
-        )
+        base = _base_analysis(output_text)
 
-        llm_response = call_single_model(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            model=model,
-            response_format="json",
-        )
-
-        result: Dict[str, Any] = {
+        result = {
             "ok": True,
             "model": model,
             "output_text": output_text,
-            "analysis": llm_response,
+            "risk_flags": base["risk_flags"],
+            "risk_score": base["risk_score"],
+            "risk_level": base["risk_level"],
+            "emotional_tone": base["emotional_tone"],
+            "analysis": base["analysis"],
             "error": None,
         }
 
-        payload["result_ok"] = True
-        payload["quality_score"] = llm_response.get("quality_score")
-        payload["safety_issues"] = llm_response.get("safety_issues", [])
-        log_event("output_analyzed", payload)
+        # Input riskleri output analizine yansıt (özellikle illegal / violence durumları)
+        try:
+            # Global input analizini yakala (sadece EZA-Core içinde çalışır)
+            from backend.api.input_analyzer import compute_risk_flags
+            input_risks = compute_risk_flags(output_text)
+            merged_flags = list(set(result["risk_flags"] + input_risks.get("risk_flags", [])))
+            result["risk_flags"] = merged_flags
 
+            # Illegal içerik varsa risk seviyesi yükselsin
+            if "illegal" in merged_flags:
+                result["risk_score"] = max(result["risk_score"], 0.85)
+                result["risk_level"] = "high"
+        except Exception:
+            pass
+
+        log_event("output_analyzed", result)
         return result
 
-    except Exception as exc:  # noqa: BLE001
-        error_msg = str(exc)
-
-        fail_result: Dict[str, Any] = {
-            "ok": True,
-            "model": model,
-            "output_text": output_text,
-            "analysis": {
-                "quality_score": 50,
-                "helpfulness": "Bilinmiyor",
-                "safety_issues": [],
-                "policy_violations": [],
-                "summary": "Varsayılan analiz (fallback)"
-            },
-            "error": error_msg,
-        }
-
-        payload["result_ok"] = False
-        payload["error"] = error_msg
-        log_event("output_analyzer_error", payload)
-
-        return fail_result
-
-
-def evaluate_output(
-    output_text: str,
-    criteria: Optional[str] = None,
-    model: str = "gpt-4o",
-) -> Dict[str, Any]:
-    """
-    Çıktıyı belirli kriterlere göre puanlar.
-
-    criteria boşsa, genel EZA kriter setini kullandığını varsayar.
-    """
-    payload = {
-        "stage": "output_evaluator",
-        "model": model,
-        "criteria_provided": bool(criteria),
-        "output_preview": output_text[:200],
-    }
-
-    try:
-        system_prompt = _system_prompt_evaluator()
-        user_prompt = "Değerlendirilecek metin:\n" f"'''{output_text}'''\n\n"
-
-        if criteria:
-            user_prompt += f"Kullanılacak kriterler:\n'''{criteria}'''\n\n"
-
-        user_prompt += "Belirtilen JSON formatında çıktı üret."
-
-        llm_response = call_single_model(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            model=model,
-            response_format="json",
-        )
-
-        result: Dict[str, Any] = {
-            "ok": True,
-            "model": model,
-            "output_text": output_text,
-            "evaluation": llm_response,
-            "error": None,
-        }
-
-        payload["result_ok"] = True
-        payload["score"] = llm_response.get("score")
-        payload["verdict"] = llm_response.get("verdict")
-        log_event("output_evaluated", payload)
-
-        return result
-
-    except Exception as exc:  # noqa: BLE001
-        error_msg = str(exc)
-
-        fail_result: Dict[str, Any] = {
+    except Exception as e:  # noqa: BLE001
+        err = {
             "ok": False,
             "model": model,
             "output_text": output_text,
-            "evaluation": {},
-            "error": error_msg,
+            "analysis": {},
+            "error": str(e),
         }
+        log_event("output_analysis_error", err)
+        return err
 
-        payload["result_ok"] = False
-        payload["error"] = error_msg
-        log_event("output_evaluator_error", payload)
 
-        return fail_result
+def evaluate_output(output_text: str) -> Dict[str, Any]:
+    """
+    /pair endpoint'i için sade skor döndürür.
+    """
+    result = analyze_output(output_text, model="pair-eval")
+    # Alignment motoru bu alanları kullanacak, burada yapı bozulmasın.
+    return result

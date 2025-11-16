@@ -1,131 +1,252 @@
 # -*- coding: utf-8 -*-
 """
-input_analyzer.py
------------------
-Kullanıcı girdisini analiz eden katman.
+input_analyzer.py – EZA-Core v5 (wifi + illegal patch)
 
-Sorumluluklar:
-- Ham metni normalize etmek
-- LLM'e açıklayıcı bir prompt ile analiz yaptırmak
-- Çıktıyı tutarlı bir sözlük formatında döndürmek
+Kullanıcı girdisini niyet, risk ve duygu düzeyinde analiz eden katman.
+
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List
 
-from backend.api.utils import call_single_model
+import re
+
 from data_store.event_logger import log_event
 
+SELF_HARM_KEYWORDS = [
+    "intihar",
+    "kendimi öldürmek",
+    "hayatıma son vermek",
+    "yaşamak istemiyorum",
+    "yaşamak istemem",
+    "ölmek istiyorum",
+]
 
-def _build_system_prompt() -> str:
+VIOLENCE_KEYWORDS = [
+    "öldürmek",
+    "vurmak",
+    "bıçaklamak",
+    "saldırmak",
+    "döv",
+    "yaralamak",
+]
+
+ILLEGAL_KEYWORDS = [
+    "hack",
+    "hacker",
+    "hacklemek",
+    "kart kopyalama",
+    "kredi kartı dolandırıcılığı",
+    "banka hack",
+    "banka hesabı hack",
+    "hesap hack",
+    "hesap çalma",
+    "bomba yapmak",
+    "uyuşturucu",
+]
+
+MANIPULATION_KEYWORDS = [
+    "manipüle et",
+    "kandır",
+    "psikolojik baskı",
+    "zihinsel oyun",
+]
+
+SENSITIVE_DATA_KEYWORDS = [
+    "tc kimlik",
+    "t.c. kimlik",
+    "kimlik numarası",
+    "şifre",
+    "sifre",
+    "parola",
+    "iban",
+]
+
+TOXICITY_KEYWORDS = [
+    "ırkçı",
+    "nefret",
+    "geri zekalı",
+    "aptal",
+    "salak",
+]
+
+
+def detect_language(text: str) -> str:
+    """Çok basit bir dil tespiti – sadece demo için."""
+    text_lower = text.lower()
+    if re.search(r"[ığüşöçİĞÜŞÖÇ]", text_lower):
+        return "tr"
+    if re.search(r"[a-z]", text_lower):
+        return "en"
+    return "unknown"
+
+
+def _is_wifi_illegal(text_lower: str) -> bool:
     """
-    LLM için sistem rolü: EZA-Core'un giriş analizi.
+    Wifi şifresi kırma gibi açıkça illegal olan durumları yakalar.
+    Yazım hatalarına toleranslıdır.
     """
-    return (
-        "Sen EZA-Core için çalışan bir 'Input Analyzer'sın. "
-        "Görevin, gelen metni etik açıdan değerlendirmek değil; "
-        "önce metni anlamak, sınıflandırmak ve özetlemektir.\n\n"
-        "Her zaman JSON formatında cevap ver:\n"
-        "{\n"
-        '  "topics": [..],\n'
-        '  "intent": "kısa niyet cümlesi",\n'
-        '  "tone": "ör: nötr / agresif / mizahi",\n'
-        '  "risk_flags": ["hate", "self_harm", ...],\n'
-        '  "summary": "1–2 cümle özet"\n'
-        "}"
-    )
+    t = text_lower
+    if "wifi" in t and any(w in t for w in ["şifre", "sifre", "password"]):
+        if any(w in t for w in ["kır", "kir", "kırmak", "kırar", "kırarım", "kırarim", "kırma", "kirma", "hack"]):
+            return True
+    return False
 
 
-def _build_user_prompt(text: str, query: Optional[str]) -> str:
+def classify_intent(text: str) -> Dict[str, Any]:
     """
-    LLM'e gidecek kullanıcı prompt'unu oluşturur.
+    Kullanıcının niyetini kaba taslak sınıflandır.
     """
-    base = f"Kullanıcı metni:\n'''{text}'''\n\n"
-    if query:
-        base += f"Kullanıcının bağlam sorusu / amacı:\n'''{query}'''\n\n"
-    base += "Yukarıdaki formata tam uyan geçerli JSON üret."
-    return base
+    t = text.lower()
 
+    primary = "information"
+    secondary: List[str] = []
 
-def analyze_input(
-    text: str,
-    query: Optional[str] = None,
-    model: str = "gpt-4o",
-) -> Dict[str, Any]:
-    """
-    Giriş metnini analiz eder ve yapılandırılmış bilgi döndürür.
+    wifi_illegal = _is_wifi_illegal(t)
 
-    Parametreler
-    -----------
-    text : str
-        Kullanıcıdan gelen ham metin.
-    query : Optional[str]
-        Ek bağlam / soru / amaç bilgisi.
-    model : str
-        Kullanılacak LLM model kimliği.
+    if any(w in t for w in SELF_HARM_KEYWORDS):
+        primary = "self-harm"
+    elif wifi_illegal or any(w in t for w in ILLEGAL_KEYWORDS):
+        primary = "illegal"
+    elif any(w in t for w in VIOLENCE_KEYWORDS):
+        primary = "violence"
+    elif any(w in t for w in MANIPULATION_KEYWORDS):
+        primary = "manipulation"
 
-    Returns
-    -------
-    dict:
-        {
-          "ok": bool,
-          "model": str,
-          "raw_text": str,
-          "analysis": {...},   # LLM'den gelen JSON
-          "error": Optional[str]
-        }
-    """
-    event_payload: Dict[str, Any] = {
-        "stage": "input_analyzer",
-        "model": model,
-        "query_present": bool(query),
-        "text_preview": text[:200],
+    if any(w in t for w in SENSITIVE_DATA_KEYWORDS):
+        secondary.append("sensitive-data")
+    if any(w in t for w in TOXICITY_KEYWORDS):
+        secondary.append("toxicity")
+
+    return {
+        "primary": primary,
+        "secondary": secondary,
     }
 
+
+def detect_emotional_tone(text: str) -> str:
+    t = text.lower()
+    if any(w in t for w in ["korkuyorum", "endişeliyim", "kaygılıyım", "panik"]):
+        return "anxious"
+    if any(w in t for w in ["çok üzgünüm", "mutsuzum", "depresif", "yalnızım"]):
+        return "sad"
+    if any(w in t for w in ["sinirliyim", "öfkeliyim", "çok kızgınım"]):
+        return "angry"
+    if any(w in t for w in ["heyecanlıyım", "mutluyum", "harika hissediyorum"]):
+        return "positive"
+    return "neutral"
+
+
+def compute_risk_flags(text: str) -> Dict[str, Any]:
+    t = text.lower()
+    flags: List[str] = []
+    score = 0.0
+
+    # 1) Wifi şifresi kırma – açık illegal durum
+    if _is_wifi_illegal(t):
+        if "illegal" not in flags:
+            flags.append("illegal")
+        score = max(score, 0.85)
+
+    # 2) Standart risk listeleri
+
+    # Self-harm
+    if any(w in t for w in SELF_HARM_KEYWORDS):
+        if "self-harm" not in flags:
+            flags.append("self-harm")
+        score = max(score, 1.0)
+
+    # Violence
+    if any(w in t for w in VIOLENCE_KEYWORDS):
+        if "violence" not in flags:
+            flags.append("violence")
+        score = max(score, 0.9)
+
+    # Illegal (genel)
+    if any(w in t for w in ILLEGAL_KEYWORDS):
+        if "illegal" not in flags:
+            flags.append("illegal")
+        score = max(score, 0.85)
+
+    # Manipulation
+    if any(w in t for w in MANIPULATION_KEYWORDS):
+        if "manipulation" not in flags:
+            flags.append("manipulation")
+        score = max(score, 0.75)
+
+    # Sensitive-data
+    if any(w in t for w in SENSITIVE_DATA_KEYWORDS):
+        if "sensitive-data" not in flags:
+            flags.append("sensitive-data")
+        score = max(score, 0.7)
+
+    # Toxicity
+    if any(w in t for w in TOXICITY_KEYWORDS):
+        if "toxicity" not in flags:
+            flags.append("toxicity")
+        score = max(score, 0.65)
+
+    return {
+        "risk_flags": flags,
+        "risk_score": score,
+    }
+
+
+def analyze_input(text: str) -> Dict[str, Any]:
+    """
+    EZA-Core v5 input analizi.
+    """
     try:
-        system_prompt = _build_system_prompt()
-        user_prompt = _build_user_prompt(text, query)
+        if not text or not text.strip():
+            raise ValueError("Boş metin analiz edilemez.")
 
-        llm_response = call_single_model(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            model=model,
-            response_format="json",
-        )
+        language = detect_language(text)
+        intent = classify_intent(text)
+        emotional_tone = detect_emotional_tone(text)
+        risk_info = compute_risk_flags(text)
 
-        result: Dict[str, Any] = {
+        risk_flags = risk_info["risk_flags"]
+        risk_score = risk_info["risk_score"]
+
+        risk_level = "low"
+        if risk_score >= 0.9:
+            risk_level = "critical"
+        elif risk_score >= 0.7:
+            risk_level = "high"
+        elif risk_score >= 0.4:
+            risk_level = "medium"
+
+        analysis = {
+            "quality_score": 80,
+            "helpfulness": "EZA v5 – Input analizi (wifi + illegal patch aktif).",
+            "safety_issues": risk_flags,
+            "policy_violations": [],
+            "summary": "EZA v5 – Niyet, risk ve duygu analizi tamamlandı.",
+        }
+
+        result = {
             "ok": True,
-            "model": model,
+            "model": "eza-input-v5",
             "raw_text": text,
-            "analysis": llm_response,
+            "language": language,
+            "intent": intent,
+            "emotional_tone": emotional_tone,
+            "risk_flags": risk_flags,
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "analysis": analysis,
             "error": None,
         }
 
-        # Supabase'e log gönder
-        event_payload["result_ok"] = True
-        event_payload["analysis_summary"] = llm_response.get("summary")
-        log_event("input_analyzed", event_payload)
-
+        log_event("input_analyzed", result)
         return result
 
-    except Exception as exc:  # noqa: BLE001
-        error_msg = str(exc)
-
-        fail_result: Dict[str, Any] = {
-            "ok": True,
-            "model": model,
+    except Exception as e:  # noqa: BLE001
+        err = {
+            "ok": False,
+            "model": "eza-input-v5",
             "raw_text": text,
-            "analysis": {
-                "topics": [],
-                "intent": "Bilinmiyor",
-                "tone": "nötr",
-                "risk_flags": [],
-                "summary": "Varsayılan analiz (fallback)"
-            },
-            "error": error_msg,
+            "analysis": {},
+            "error": str(e),
         }
-
-        event_payload["result_ok"] = False
-        event_payload["error"] = error_msg
-        log_event("input_analyzer_error", event_payload)
-
-        return fail_result
+        log_event("input_analysis_error", err)
+        return err

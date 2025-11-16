@@ -1,87 +1,79 @@
 # -*- coding: utf-8 -*-
 """
-advisor.py
-----------
-Alignment sonucuna göre aksiyon / tavsiye üreten katman.
+advisor.py – EZA-Core v5
+Risk ve alignment bilgisine göre etik tavsiye üreten katman.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
-from backend.api.utils import call_single_model
 from data_store.event_logger import log_event
 
 
-def _system_prompt_advisor() -> str:
-    return (
-        "Sen EZA-Core'un 'Ethical Advisor' katmanısın.\n"
-        "Input analizi, output analizi ve alignment sonucunu alırsın;\n"
-        "amacın yasaklamak değil, rehberlik etmektir.\n\n"
-        "JSON formatında cevap ver:\n"
-        "{\n"
-        '  "user_message": "kullanıcıya sade tavsiye",\n'
-        '  "developer_notes": "geliştiriciye teknik/etik notlar",\n'
-        '  "risk_level": "low / medium / high",\n'
-        '  "suggested_actions": ["log", "manual_review", ...]\n'
-        "}"
-    )
+def _has_flag(flags: List[str], flag: str) -> bool:
+    return flag in flags
 
 
 def generate_advice(
     input_analysis: Dict[str, Any],
     output_analysis: Dict[str, Any],
     alignment_result: Dict[str, Any],
-    model: str = "gpt-4o",
 ) -> str:
     """
-    DEMO etik tavsiye.
-    UI string beklediği için düz metin döndür.
+    Risk ve alignment bilgisine göre kullanıcıya gösterilecek etik tavsiyeyi üretir.
+    Özellikle self-harm, illegal ve saldırgan içerikler için insan odaklı, güvenli
+    yönlendirmeler verir.
     """
-    payload: Dict[str, Any] = {
-        "stage": "advisor",
-        "alignment_ok": alignment_result.get("ok"),
-        "alignment_score": alignment_result.get("alignment_score"),
-        "alignment_label": alignment_result.get("alignment_label"),
-    }
+    in_flags: List[str] = input_analysis.get("risk_flags", []) or []
+    out_flags: List[str] = output_analysis.get("risk_flags", []) or []
+    all_flags = list(set(in_flags + out_flags))
 
-    try:
-        # Demo tavsiye metni
-        advice_text = "Güçlü şifreler kullanın ve şüpheli bağlantılara tıklamaktan kaçının."
+    verdict = alignment_result.get("verdict", "Unknown")
 
-        # Gerçek LLM çağrısı yapılabilir (opsiyonel)
-        # system_prompt = _system_prompt_advisor()
-        # user_prompt = (
-        #     "Aşağıda EZA-Core katmanlarından gelen üç farklı özet var.\n\n"
-        #     "1) Input Analysis:\n"
-        #     f"{input_analysis}\n\n"
-        #     "2) Output Analysis:\n"
-        #     f"{output_analysis}\n\n"
-        #     "3) Alignment Result:\n"
-        #     f"{alignment_result}\n\n"
-        #     "Görevin; kullanıcıya sade bir mesaj önermektir."
-        # )
-        # llm_response = call_single_model(
-        #     system_prompt=system_prompt,
-        #     user_prompt=user_prompt,
-        #     model=model,
-        #     response_format="json",
-        # )
-        # if isinstance(llm_response, dict):
-        #     advice_text = llm_response.get("user_message", advice_text)
-
-        payload.update(
-            {
-                "result_ok": True,
-            }
+    # Self-harm (intihar, kendine zarar)
+    if _has_flag(all_flags, "self-harm"):
+        advice = (
+            "Bu mesaj, kendine zarar verme veya intihar riski içeriyor olabilir. "
+            "Bu tür düşüncelerle başa çıkmak çok zor olabilir, fakat yalnız değilsiniz. "
+            "Lütfen güvendiğiniz bir aile üyesi, arkadaş ya da bir sağlık profesyoneliyle "
+            "en kısa sürede iletişime geçin. Bulunduğunuz ülkedeki acil yardım ve kriz "
+            "hatlarıyla görüşmekten çekinmeyin."
         )
-        log_event("advice_generated", payload)
+    # Illegal
+    elif _has_flag(all_flags, "illegal"):
+        advice = (
+            "İçerikte yasa dışı faaliyetlere yönelik ifadeler tespit edildi. "
+            "EZA, suç teşkil eden eylemlerle ilgili talimat vermez. "
+            "Bunun yerine, yasal ve güvenli çözümler bulmanıza yardımcı olacak "
+            "bilgilere odaklanmak daha doğrudur."
+        )
+    # Violence
+    elif _has_flag(all_flags, "violence"):
+        advice = (
+            "İçerikte şiddet veya saldırgan davranışlara dair ifadeler tespit edildi. "
+            "Şiddet, kalıcı fiziksel ve psikolojik zararlar doğurabilir. "
+            "Sorunları, güvenli ve yapıcı yollarla çözmeye odaklanmak her zaman daha sağlıklıdır."
+        )
+    # Manipulation
+    elif _has_flag(all_flags, "manipulation"):
+        advice = (
+            "İçerikte başkalarını manipüle etmeye yönelik niyetler görülebilir. "
+            "Sağlıklı ilişkiler karşılıklı güven, saygı ve şeffaflık üzerine kuruludur. "
+            "Manipülatif yaklaşımlar uzun vadede güveni zedeler."
+        )
+    # Toxicity / Hate
+    elif _has_flag(all_flags, "toxicity"):
+        advice = (
+            "İçerikte hakaret veya toksik dil tespit edildi. "
+            "Farklı görüşlere sahip olsak bile, saygılı ve yapıcı bir dil kullanmak "
+            "uzun vadede daha iyi sonuçlar doğurur."
+        )
+    else:
+        # Düşük riskli senaryolar için genel etik tavsiye
+        advice = (
+            "Bu içerik için ciddi bir risk tespit edilmedi. Yine de çevrimiçi ortamlarda "
+            "paylaştığınız bilgileri dikkatle seçmeniz, kişisel verilerinizi korumanız ve "
+            "başkalarına karşı saygılı bir dil kullanmanız önemlidir."
+        )
 
-        return advice_text
-
-    except Exception as exc:  # noqa: BLE001
-        error_msg = str(exc)
-
-        payload["result_ok"] = False
-        payload["error"] = error_msg
-        log_event("advisor_error", payload)
-
-        return "Tavsiye oluşturulurken bir hata oluştu."
+    log_event("advice_generated", {"verdict": verdict, "flags": all_flags, "advice": advice})
+    return advice
