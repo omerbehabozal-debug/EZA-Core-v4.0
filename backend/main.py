@@ -38,6 +38,8 @@ from backend.api.utils.model_runner import (
     call_multi_models,
     rewrite_with_ethics,
 )
+from backend.ai.knowledge_engine import KnowledgeEngine
+from backend.ai.response_composer import ResponseComposer
 
 from backend.api.pipeline import router as pipeline_router
 from diagnostics.eza_status import router as diagnostics_router
@@ -122,6 +124,12 @@ if not hasattr(app.state, "abuse_engine"):
 if not hasattr(app.state, "memory_consistency_engine"):
     app.state.memory_consistency_engine = MemoryConsistencyEngine()
 
+# --- AI Module – Knowledge Engine & Response Composer ---
+if not hasattr(app.state, "knowledge_engine"):
+    app.state.knowledge_engine = KnowledgeEngine()
+if not hasattr(app.state, "response_composer"):
+    app.state.response_composer = ResponseComposer()
+
 # --- Middleware Katmanı ---
 app.add_middleware(RequestLoggerMiddleware)
 app.add_middleware(NormalizeMiddleware)
@@ -157,6 +165,7 @@ class AnalyzeRequest(BaseModel):
     text: Optional[str] = None
     query: Optional[str] = None
     model: Optional[str] = "chatgpt"
+    mode: Optional[str] = "standalone"  # standalone, proxy, fast, deep, openai
 
 
 class PairRequest(BaseModel):
@@ -246,6 +255,7 @@ async def index(request: Request):
 async def analyze(req: AnalyzeRequest, request: Request):
     text = req.text or req.query or ""
     model = (req.model or "chatgpt").lower()
+    mode = (req.mode or "standalone").lower()
 
     # EZA-NarrativeEngine: Initialize narrative engine if not exists
     if not hasattr(request.app.state, "narrative") or request.app.state.narrative is None:
@@ -383,8 +393,28 @@ async def analyze(req: AnalyzeRequest, request: Request):
         if "narrative-risk" not in input_scores["risk_flags"]:
             input_scores["risk_flags"].append("narrative-risk")
 
-    # 2) Model cevabını al (simülasyon)
-    if model == "multi":
+    # 2) Model cevabını al (simülasyon veya Knowledge Engine)
+    # Standalone mode with Knowledge Engine
+    if mode == "standalone":
+        # Use Knowledge Engine for natural responses
+        knowledge_answer = request.app.state.knowledge_engine.answer_query(text)
+        
+        if knowledge_answer:
+            # Compose natural response
+            intent_primary = input_scores.get("intent_engine", {}).get("primary", "information")
+            risk_level = input_scores.get("risk_level", "safe")
+            composed_answer = request.app.state.response_composer.compose_natural_response(
+                fact=knowledge_answer,
+                intent=intent_primary,
+                safety=risk_level
+            )
+            # Use composed answer as model output
+            model_outputs = {"chatgpt": composed_answer}
+        else:
+            # No knowledge found, use fallback
+            fallback_response = request.app.state.response_composer.compose_fallback_response()
+            model_outputs = {"chatgpt": fallback_response}
+    elif model == "multi":
         model_outputs = call_multi_models(text)
     else:
         out = call_single_model(text, model_name=model)
@@ -851,7 +881,7 @@ async def analyze(req: AnalyzeRequest, request: Request):
     
     # Use build_standalone_response for standalone mode (new dynamic template system)
     try:
-        rewritten_text = build_standalone_response(report, raw_answer)
+        rewritten_text = build_standalone_response(report, raw_answer, mode)
     except Exception as e:
         # Fallback if build_standalone_response fails
         import traceback

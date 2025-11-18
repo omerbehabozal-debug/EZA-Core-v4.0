@@ -98,7 +98,12 @@ EZA Tavsiyesi:
 def build_dynamic_safe_response(report: dict) -> str:
     """
     EZA'nın final verdict seviyesine göre uygun etik yanıtı üretir.
+    
+    For greeting/casual/smalltalk messages, returns empty string (no advisory).
     """
+    # Check if this is a greeting/casual/smalltalk message
+    if _is_greeting_message(report):
+        return ""  # No advisory for greeting messages
 
     level = (report.get("final_verdict", {}) or {}).get("level", "safe").lower()
     summary = report.get("final_verdict", {}).get("reason", "")
@@ -122,12 +127,51 @@ def build_dynamic_safe_response(report: dict) -> str:
     return SAFE_TEMPLATE.format(analysis_summary=summary).strip()
 
 
-def build_standalone_response(report: Dict[str, Any], model_output: Optional[str] = None) -> str:
+def _is_greeting_message(report: Dict[str, Any]) -> bool:
+    """
+    Check if the message is a greeting, casual, or smalltalk message.
+    """
+    # Check intent
+    intent_data = report.get("intent", {})
+    if isinstance(intent_data, dict):
+        primary = intent_data.get("primary", "").lower()
+        if primary in ["greeting", "casual", "smalltalk"]:
+            return True
+    
+    # Check input text for greeting patterns
+    input_data = report.get("input", {})
+    if isinstance(input_data, dict):
+        raw_text = input_data.get("raw_text", "").lower()
+        greeting_keywords = [
+            "selam", "merhaba", "hey", "hi", "hello",
+            "nasılsın", "nasilsin", "nasılsınız", "nasilsiniz",
+            "bugün nasıl", "bugun nasil", "bugün nasılsın", "bugun nasilsin",
+            "iyi günler", "iyi gunler", "günaydın", "gunaydin",
+            "naber", "ne haber", "ne var", "ne yapıyorsun", "ne yapiyorsun"
+        ]
+        if any(keyword in raw_text for keyword in greeting_keywords):
+            # Additional check: if it's a short message with low risk
+            risk_level = report.get("risk_level", "low")
+            if risk_level == "low" and len(raw_text.split()) <= 10:
+                return True
+    
+    return False
+
+
+def build_standalone_response(report: Dict[str, Any], model_output: Optional[str] = None, mode: Optional[str] = None) -> str:
     """
     Standalone modda kullanıcıya gösterilecek nihai cevabı üretir.
     Yeni dinamik şablon sistemini kullanır.
+    
+    For greeting/casual/smalltalk messages, returns natural response without
+    simulated response, EZA Advisory, or analysis text.
     """
     try:
+        # Check if this is a greeting/casual/smalltalk message
+        if _is_greeting_message(report):
+            # Return natural greeting response only
+            return "Selam! Buradayım, hazırım. Sana nasıl yardımcı olabilirim? 😊"
+        
         # 1) Model cevabını al (eğer varsa)
         if model_output is None:
             # Try to get from report
@@ -161,8 +205,12 @@ def build_standalone_response(report: Dict[str, Any], model_output: Optional[str
         if model_output and model_output.strip():
             parts.append(model_output.strip())
         
-        # Etik açıklama
-        parts.append(f"\n\n[EZA Advisory]\n{advisory.strip()}")
+        # Etik açıklama - only add if not in standalone mode with Knowledge Engine
+        # In standalone mode, we want natural conversation without advisory
+        if mode != "standalone" or not model_output or not model_output.strip():
+            # Add advisory for non-standalone modes or if no model output
+            if advisory and advisory.strip():
+                parts.append(f"\n\n[EZA Advisory]\n{advisory.strip()}")
         
         return "\n".join(parts)
     except Exception as e:
