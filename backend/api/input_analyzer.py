@@ -99,8 +99,48 @@ def calculate_intent_scores(text: str) -> Tuple[Dict[str, float], Dict[str, List
         "manipulation": 0.0,
         "sensitive-data": 0.0,
         "toxicity": 0.0,
+        "greeting": 0.0,
         "information": 0.1,
     }
+    
+    # GREETING detection - must be checked BEFORE information patterns
+    # Only pure greetings, not questions with greeting words
+    pure_greeting_patterns = [
+        "selam", "merhaba", "hey", "hi", "hello",
+        "naber", "nasılsın", "nasilsin", "nasılsınız", "nasilsiniz",
+        "günaydın", "gunaydin", "iyi günler", "iyi gunler"
+    ]
+    
+    # Information question patterns - these should NOT be greeting
+    information_patterns = [
+        "nedir", "ne demek", "ne anlama", "what is", "what does",
+        "nasıl çalışır", "nasil calisir", "how does", "how works",
+        "neden", "niçin", "why", "why does",
+        "açıkla", "acikla", "explain", "tell me",
+        "bilgi ver", "bilgi", "information", "info",
+        "bana anlat", "bana açıkla", "bana bilgi"
+    ]
+    
+    # Check if text contains information patterns (higher priority)
+    has_information_pattern = any(pattern in text_low for pattern in information_patterns)
+    
+    # INFORMATION detection - boost score if information patterns found
+    if has_information_pattern:
+        scores["information"] = 0.9  # High priority for information questions
+    
+    # Check for pure greetings (only if no information pattern)
+    if not has_information_pattern:
+        for greeting in pure_greeting_patterns:
+            if greeting in text_low:
+                # Additional check: if message is very short and only greeting
+                words = text_low.split()
+                if len(words) <= 5:  # Very short messages are likely greetings
+                    scores["greeting"] = 0.9
+                    break
+                # If greeting is at the start and message is short
+                if text_low.startswith(greeting) and len(words) <= 8:
+                    scores["greeting"] = 0.8
+                    break
     
     # ACTION layer
     for tok in illegal_actions:
@@ -239,8 +279,9 @@ def analyze_input(text: str) -> Dict[str, Any]:
         category = risk_result["category"]
         
         # Determine risk flags (intents with score >= 0.4)
+        # Exclude greeting and information from risk flags (they are safe)
         risk_flags = [intent for intent, score in intent_scores.items() 
-                     if score >= 0.4 and intent != "information"]
+                     if score >= 0.4 and intent not in ["information", "greeting"]]
         
         # Add reasoning shield red flags to risk_flags
         if reasoning_result.get("red_flags"):

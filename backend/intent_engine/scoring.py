@@ -138,7 +138,8 @@ def compute_intent_scores(text: str) -> Dict[str, float]:
     Compute per-intent scores based on action/target/purpose hits and special patterns.
     """
     scores: Dict[str, float] = {
-        "information": 0.0,
+        "information": 0.1,  # Default baseline
+        "greeting": 0.0,
         "illegal": 0.0,
         "violence": 0.0,
         "self-harm": 0.0,
@@ -146,6 +147,43 @@ def compute_intent_scores(text: str) -> Dict[str, float]:
         "sensitive-data": 0.0,
         "toxicity": 0.0,
     }
+    
+    text_lower = text.lower()
+    
+    # GREETING and INFORMATION detection - must be checked FIRST
+    # Information question patterns - these should NOT be greeting
+    information_patterns = [
+        "nedir", "ne demek", "ne anlama", "what is", "what does",
+        "nasıl çalışır", "nasil calisir", "how does", "how works",
+        "neden", "niçin", "why", "why does",
+        "açıkla", "acikla", "explain", "tell me",
+        "bilgi ver", "bilgi", "information", "info",
+        "bana anlat", "bana açıkla", "bana bilgi"
+    ]
+    
+    # Check if text contains information patterns (higher priority)
+    has_information_pattern = any(pattern in text_lower for pattern in information_patterns)
+    
+    if has_information_pattern:
+        scores["information"] = 0.9  # High priority for information questions
+    
+    # Pure greeting patterns (only if no information pattern)
+    pure_greeting_patterns = [
+        "selam", "merhaba", "hey", "hi", "hello",
+        "naber", "nasılsın", "nasilsin", "nasılsınız", "nasilsiniz",
+        "günaydın", "gunaydin", "iyi günler", "iyi gunler"
+    ]
+    
+    if not has_information_pattern:
+        for greeting in pure_greeting_patterns:
+            if greeting in text_lower:
+                words = text_lower.split()
+                if len(words) <= 5:  # Very short messages are likely greetings
+                    scores["greeting"] = 0.9
+                    break
+                if text_lower.startswith(greeting) and len(words) <= 8:
+                    scores["greeting"] = 0.8
+                    break
     
     # Get hits
     action_hits = detect_action_hits(text)

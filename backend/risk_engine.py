@@ -36,8 +36,27 @@ def compute_risk_and_alignment(intent_scores: Dict[str, float], raw_text: str) -
         intent_scores["sensitive-data"] = max(intent_scores.get("sensitive-data", 0), 0.8)
     
     # 2) En yüksek skorlu niyeti bul
-    primary = max(intent_scores, key=intent_scores.get)
-    primary_score = float(intent_scores[primary])
+    # Priority order: greeting and information first (if they have high scores), then risk intents
+    greeting_score = intent_scores.get("greeting", 0.0)
+    information_score = intent_scores.get("information", 0.0)
+    
+    # If greeting or information has high score, use it
+    if greeting_score >= 0.7:
+        primary = "greeting"
+        primary_score = greeting_score
+    elif information_score >= 0.7:
+        primary = "information"
+        primary_score = information_score
+    else:
+        # Otherwise, find highest risk intent (excluding greeting/information)
+        risk_intents = {k: v for k, v in intent_scores.items() if k not in ["greeting", "information"]}
+        if risk_intents:
+            primary = max(risk_intents, key=risk_intents.get)
+            primary_score = float(intent_scores[primary])
+        else:
+            # Fallback: use highest score overall
+            primary = max(intent_scores, key=intent_scores.get)
+            primary_score = float(intent_scores[primary])
     
     # 3) Risk seviyesi
     if primary_score >= RISK_THRESHOLDS["critical"]:

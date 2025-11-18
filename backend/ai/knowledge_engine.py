@@ -77,6 +77,21 @@ class KnowledgeEngine:
                         "Yapay zeka, makine öğrenmesi ve doğal dil işleme modern teknolojilerdir.",
                         "EZA, yapay zeka tabanlı bir etik analiz sistemidir.",
                     ]
+                },
+                "yapay zeka": {
+                    "facts": [
+                        "Yapay zeka (AI), makinelerin insan benzeri düşünme ve öğrenme yeteneklerine sahip olmasını sağlayan teknolojidir.",
+                        "Yapay zeka, makine öğrenmesi, doğal dil işleme ve derin öğrenme gibi alt alanları içerir.",
+                        "Yapay zeka sistemleri, veri analizi, görüntü tanıma, dil çevirisi ve otomatik karar verme gibi görevleri yerine getirebilir.",
+                        "EZA, yapay zeka teknolojisini kullanarak etik analiz ve güvenlik değerlendirmesi yapar.",
+                    ]
+                },
+                "bilim": {
+                    "facts": [
+                        "Bilim, doğal dünyayı anlamak için sistematik gözlem, deney ve analiz yöntemlerini kullanan bir disiplindir.",
+                        "Bilim, fizik, kimya, biyoloji, matematik gibi birçok alt dalı içerir.",
+                        "Bilimsel yöntem, hipotez kurma, test etme ve sonuçları değerlendirme sürecidir.",
+                    ]
                 }
             }
         }
@@ -125,6 +140,12 @@ class KnowledgeEngine:
             "etik": "topics.etika",
             "güvenlik": "topics.güvenlik",
             "teknoloji": "topics.teknoloji",
+            "yapay zeka": "topics.yapay zeka",
+            "yapay zeka": "topics.yapay zeka",
+            "ai": "topics.yapay zeka",
+            "artificial intelligence": "topics.yapay zeka",
+            "bilim": "topics.bilim",
+            "science": "topics.bilim",
             "yardım": "general.help",
             "selam": "general.greeting",
             "merhaba": "general.greeting",

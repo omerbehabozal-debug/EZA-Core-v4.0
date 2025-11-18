@@ -47,6 +47,7 @@ def analyze_intent(text: str, language: str = "unknown") -> Dict[str, Any]:
     intent_scores = compute_intent_scores(text_norm)
     
     # 3) Decide primary intent (with tie-breaking order)
+    # IMPORTANT: greeting and information should be checked before risk intents
     intent_order = [
         "self-harm",
         "violence",
@@ -54,6 +55,7 @@ def analyze_intent(text: str, language: str = "unknown") -> Dict[str, Any]:
         "manipulation",
         "sensitive-data",
         "toxicity",
+        "greeting",  # Add greeting to intent order
         "information",
     ]
     

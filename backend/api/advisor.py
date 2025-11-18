@@ -130,29 +130,52 @@ def build_dynamic_safe_response(report: dict) -> str:
 def _is_greeting_message(report: Dict[str, Any]) -> bool:
     """
     Check if the message is a greeting, casual, or smalltalk message.
+    ONLY pure greetings, NOT information questions with greeting words.
     """
-    # Check intent
+    # Check intent from intent_engine (most reliable)
     intent_data = report.get("intent", {})
     if isinstance(intent_data, dict):
         primary = intent_data.get("primary", "").lower()
-        if primary in ["greeting", "casual", "smalltalk"]:
+        if primary == "greeting":
             return True
     
-    # Check input text for greeting patterns
+    # Also check intent_engine directly
+    intent_engine = report.get("intent_engine", {})
+    if isinstance(intent_engine, dict):
+        primary = intent_engine.get("primary", "").lower()
+        if primary == "greeting":
+            return True
+    
+    # Check input text for greeting patterns (fallback, but be strict)
     input_data = report.get("input", {})
     if isinstance(input_data, dict):
         raw_text = input_data.get("raw_text", "").lower()
-        greeting_keywords = [
-            "selam", "merhaba", "hey", "hi", "hello",
-            "nasılsın", "nasilsin", "nasılsınız", "nasilsiniz",
-            "bugün nasıl", "bugun nasil", "bugün nasılsın", "bugun nasilsin",
-            "iyi günler", "iyi gunler", "günaydın", "gunaydin",
-            "naber", "ne haber", "ne var", "ne yapıyorsun", "ne yapiyorsun"
+        
+        # Information question patterns - if these exist, it's NOT a greeting
+        information_patterns = [
+            "nedir", "ne demek", "ne anlama", "what is", "what does",
+            "nasıl çalışır", "nasil calisir", "how does", "how works",
+            "neden", "niçin", "why", "why does",
+            "açıkla", "acikla", "explain", "tell me",
+            "bilgi ver", "bilgi", "information", "info",
+            "bana anlat", "bana açıkla", "bana bilgi"
         ]
-        if any(keyword in raw_text for keyword in greeting_keywords):
-            # Additional check: if it's a short message with low risk
-            risk_level = report.get("risk_level", "low")
-            if risk_level == "low" and len(raw_text.split()) <= 10:
+        
+        # If information pattern exists, it's NOT a greeting
+        if any(pattern in raw_text for pattern in information_patterns):
+            return False
+        
+        # Pure greeting keywords (only if no information pattern)
+        pure_greeting_keywords = [
+            "selam", "merhaba", "hey", "hi", "hello",
+            "naber", "nasılsın", "nasilsin", "nasılsınız", "nasilsiniz",
+            "günaydın", "gunaydin", "iyi günler", "iyi gunler"
+        ]
+        
+        if any(keyword in raw_text for keyword in pure_greeting_keywords):
+            # Additional check: must be short message
+            words = raw_text.split()
+            if len(words) <= 8:  # Short messages only
                 return True
     
     return False

@@ -396,24 +396,31 @@ async def analyze(req: AnalyzeRequest, request: Request):
     # 2) Model cevabını al (simülasyon veya Knowledge Engine)
     # Standalone mode with Knowledge Engine
     if mode == "standalone":
-        # Use Knowledge Engine for natural responses
-        knowledge_answer = request.app.state.knowledge_engine.answer_query(text)
+        # Get intent from input analysis
+        intent_primary = input_scores.get("intent_engine", {}).get("primary", "information")
         
-        if knowledge_answer:
-            # Compose natural response
-            intent_primary = input_scores.get("intent_engine", {}).get("primary", "information")
-            risk_level = input_scores.get("risk_level", "safe")
-            composed_answer = request.app.state.response_composer.compose_natural_response(
-                fact=knowledge_answer,
-                intent=intent_primary,
-                safety=risk_level
-            )
-            # Use composed answer as model output
-            model_outputs = {"chatgpt": composed_answer}
+        # 1) If intent is greeting → use greeting template
+        if intent_primary == "greeting":
+            greeting_response = request.app.state.response_composer.compose_greeting_response()
+            model_outputs = {"chatgpt": greeting_response}
         else:
-            # No knowledge found, use fallback
-            fallback_response = request.app.state.response_composer.compose_fallback_response()
-            model_outputs = {"chatgpt": fallback_response}
+            # 2) For information questions → use Knowledge Engine
+            knowledge_answer = request.app.state.knowledge_engine.answer_query(text)
+            
+            if knowledge_answer:
+                # Compose natural response with correct intent
+                risk_level = input_scores.get("risk_level", "safe")
+                composed_answer = request.app.state.response_composer.compose_natural_response(
+                    fact=knowledge_answer,
+                    intent=intent_primary,
+                    safety=risk_level
+                )
+                # Use composed answer as model output
+                model_outputs = {"chatgpt": composed_answer}
+            else:
+                # 3) No knowledge found → use fallback
+                fallback_response = request.app.state.response_composer.compose_fallback_response()
+                model_outputs = {"chatgpt": fallback_response}
     elif model == "multi":
         model_outputs = call_multi_models(text)
     else:

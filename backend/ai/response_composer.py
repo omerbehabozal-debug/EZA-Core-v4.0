@@ -72,9 +72,11 @@ class ResponseComposer:
         # Normalize intent
         intent_lower = intent.lower()
         
-        # Select appropriate template category
-        if intent_lower in ["greeting", "casual", "smalltalk"]:
-            template_category = "greeting"
+        # Select appropriate template category based on intent
+        # IMPORTANT: greeting should NOT reach here (handled separately)
+        if intent_lower == "greeting":
+            # This shouldn't happen, but fallback to greeting
+            return self.compose_greeting_response()
         elif intent_lower in ["information", "info"]:
             template_category = "information"
         elif intent_lower in ["explanation", "explain"]:
@@ -82,10 +84,11 @@ class ResponseComposer:
         elif intent_lower in ["help", "assistance"]:
             template_category = "help"
         else:
-            template_category = "general"
+            # Default to information for unknown intents
+            template_category = "information"
         
         # Get templates for this category
-        templates = self.templates.get(template_category, self.templates["general"])
+        templates = self.templates.get(template_category, self.templates["information"])
         
         # Select random template
         template = random.choice(templates)
