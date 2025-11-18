@@ -5,7 +5,7 @@ import { useChatStore } from "@/stores/chatStore";
 import MessageBubble from "./MessageBubble";
 import ChatInput from "./ChatInput";
 import AnalysisPanel from "@/components/AnalysisPanel";
-import ModeSwitcher from "./ModeSwitcher";
+import ModeSelector from "./ModeSelector";
 
 export default function ChatLayout() {
   const messages = useChatStore((s) => s.messages);
@@ -40,7 +40,7 @@ export default function ChatLayout() {
             Premium UI v1.0
           </span>
         </div>
-        <ModeSwitcher />
+        <ModeSelector />
       </div>
 
       {/* Main Content */}

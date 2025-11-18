@@ -21,8 +21,8 @@ export interface Msg {
   analysis?: MessageAnalysis;
 }
 
-export type EngineMode = "standalone" | "proxy" | "fast" | "deep" | "openai";
-export type DepthMode = "fast" | "deep";
+export type EngineMode = "standalone" | "proxy" | "proxy_fast" | "proxy_deep";
+export type ProxySubMode = "proxy" | "proxy_fast" | "proxy_deep";
 
 export type Provider = "openai" | "anthropic" | "mistral" | "llama";
 
@@ -32,7 +32,7 @@ interface ChatState {
   selectedMessageIndex: number | null;
   selectedMessageId: string | null;
   engineMode: EngineMode;
-  depthMode: DepthMode;
+  proxySubMode: ProxySubMode;  // For proxy sub-modes (normal, fast, deep)
   provider: Provider;
   audit: Array<{
     timestamp: string;
@@ -46,7 +46,7 @@ interface ChatState {
   setSelectedMessageIndex: (idx: number | null) => void;
   setSelectedMessageId: (id: string | null) => void;
   setEngineMode: (m: EngineMode) => void;
-  setDepthMode: (m: DepthMode) => void;
+  setProxySubMode: (m: ProxySubMode) => void;
   setProvider: (p: Provider) => void;
   addAuditEntry: (entry: { timestamp: string; message_id: string; analysis_snapshot: any }) => void;
   addAuditLogEntry: (analysis: MessageAnalysis) => void;
@@ -59,7 +59,7 @@ export const useChatStore = create<ChatState>((set) => ({
   selectedMessageIndex: null,
   selectedMessageId: null,
   engineMode: "standalone",
-  depthMode: "fast",
+  proxySubMode: "proxy",
   provider: "openai",
   audit: [],
   auditLog: [],
@@ -77,7 +77,7 @@ export const useChatStore = create<ChatState>((set) => ({
   setSelectedMessageIndex: (idx) => set(() => ({ selectedMessageIndex: idx })),
   setSelectedMessageId: (id) => set(() => ({ selectedMessageId: id })),
   setEngineMode: (m) => set(() => ({ engineMode: m })),
-  setDepthMode: (m) => set(() => ({ depthMode: m })),
+  setProxySubMode: (m) => set(() => ({ proxySubMode: m })),
   setProvider: (p) => set(() => ({ provider: p })),
   addAuditEntry: (entry) =>
     set((s) => ({
@@ -94,7 +94,7 @@ export const useChatStore = create<ChatState>((set) => ({
       selectedMessageIndex: null,
       selectedMessageId: null,
       engineMode: "standalone",
-      depthMode: "fast",
+      proxySubMode: "proxy",
       provider: "openai",
       audit: [],
       auditLog: []

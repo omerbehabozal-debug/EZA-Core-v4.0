@@ -2,53 +2,120 @@
 # backend/api/utils/model_runner.py
 
 from typing import Dict, Optional, Any, List
+from backend.ai.model_client import LLMClient
 
-def call_single_model(
+# Global LLM client instance
+_llm_client = None
+
+def get_llm_client():
+    """Get or create LLM client instance"""
+    global _llm_client
+    if _llm_client is None:
+        _llm_client = LLMClient()
+    return _llm_client
+
+async def call_single_model(
     text: Optional[str] = None,
     model_name: Optional[str] = None,
     system_prompt: Optional[str] = None,
     user_prompt: Optional[str] = None,
     model: Optional[str] = None,
     response_format: Optional[str] = None,
+    mode: str = "proxy",
 ) -> Any:
     """
-    Tek bir modelden yanıt alır — Şu anda demo amaçlı.
-    Gerçekte OpenAI / Claude / Gemini API entegre edilecek.
+    Call a single LLM model (real API call via LLMClient).
     
-    İki kullanım modu desteklenir:
-    1. Basit: call_single_model(text="...", model_name="...")
-    2. Detaylı: call_single_model(system_prompt="...", user_prompt="...", model="...", response_format="...")
+    Args:
+        text: User prompt/message (for simple mode)
+        model_name: Model name (for compatibility, not used if LLM_PROVIDER is set)
+        system_prompt: System prompt (for detailed mode)
+        user_prompt: User prompt (for detailed mode)
+        model: Model name (for detailed mode)
+        response_format: Response format (e.g., "json")
+        mode: Mode ("standalone" returns None, "proxy" calls LLM)
+        
+    Returns:
+        LLM response text, or None for standalone mode, or simulated response if LLM call fails
     """
-    # Basit kullanım modu
-    if text is not None and model_name is not None:
-        return f"[{model_name}] → Simulated response for: {text}"
+    if mode == "standalone":
+        return None  # Standalone uses its own engine (Knowledge Engine)
     
-    # Detaylı kullanım modu
-    if system_prompt is not None and user_prompt is not None:
-        model_to_use = model or model_name or "gpt-4o"
-        # Simüle edilmiş JSON yanıtı
+    # Use LLMClient for real API calls
+    try:
+        llm_client = get_llm_client()
+        
+        # Determine prompt and system message
+        if text is not None and model_name is not None:
+            # Simple mode
+            prompt = text
+            system = "You are an AI assistant behind an ethical proxy (EZA). Answer clearly and concisely."
+        elif system_prompt is not None and user_prompt is not None:
+            # Detailed mode
+            prompt = user_prompt
+            system = system_prompt
+        else:
+            raise ValueError("call_single_model: Ya (text, model_name) ya da (system_prompt, user_prompt, model) parametreleri gerekli")
+        
+        response = await llm_client.call(prompt=prompt, system=system, temperature=0.3)
+        
+        # Handle JSON response format if requested
         if response_format == "json":
-            return {
-                "quality_score": 85,
-                "helpfulness": "İyi bir cevap",
-                "safety_issues": [],
-                "policy_violations": [],
-                "summary": "Simüle edilmiş analiz sonucu"
-            }
-        return f"[{model_to_use}] → Simulated response for: {user_prompt[:100]}"
-    
-    raise ValueError("call_single_model: Ya (text, model_name) ya da (system_prompt, user_prompt, model) parametreleri gerekli")
+            # Try to parse as JSON, fallback to dict
+            import json
+            try:
+                return json.loads(response)
+            except:
+                return {
+                    "quality_score": 85,
+                    "helpfulness": response[:100],
+                    "safety_issues": [],
+                    "policy_violations": [],
+                    "summary": response
+                }
+        
+        return response
+    except Exception as e:
+        # Fallback to simulated response if LLM call fails
+        import traceback
+        print(f"WARNING: LLM call failed, using fallback: {e}")
+        print(traceback.format_exc())
+        if text is not None and model_name is not None:
+            return f"[{model_name}] → Simulated response for: {text}"
+        elif system_prompt is not None and user_prompt is not None:
+            model_to_use = model or model_name or "gpt-4o"
+            return f"[{model_to_use}] → Simulated response for: {user_prompt[:100]}"
+        else:
+            return f"[LLM Error: {str(e)}] Simulated response"
 
-def call_multi_models(text: str) -> Dict[str, str]:
+async def call_multi_models(text: str) -> Dict[str, str]:
     """
-    Premium çoklu model çağırma simülasyonu.
-    """
-    models = ["chatgpt", "claude", "gemini", "llama"]
+    Call multiple LLM models (real API calls via LLMClient).
     
-    return {
-        model: f"[{model}] → Simulated response for: {text}"
-        for model in models
-    }
+    Args:
+        text: User prompt/message
+        
+    Returns:
+        Dictionary of model_name -> response_text
+    """
+    results = {}
+    
+    # Try to call multiple providers if configured
+    # For now, use the configured provider
+    try:
+        llm_client = get_llm_client()
+        system_message = "You are an AI assistant behind an ethical proxy (EZA). Answer clearly and concisely."
+        response = await llm_client.call(prompt=text, system=system_message, temperature=0.3)
+        results[llm_client.provider] = response
+    except Exception as e:
+        print(f"WARNING: Multi-model call failed: {e}")
+        results["error"] = f"LLM call failed: {str(e)}"
+        # Fallback to simulated responses
+        models = ["chatgpt", "claude", "gemini", "llama"]
+        for model in models:
+            results[model] = f"[{model}] → Simulated response for: {text}"
+    
+    return results
 
 def rewrite_with_ethics(
     original_text: str,

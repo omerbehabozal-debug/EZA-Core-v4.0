@@ -4,7 +4,8 @@
 # ---------------------------
 
 # Web Framework
-fastapi==0.110.0
+fastapi
+httpx==0.110.0
 uvicorn[standard]==0.29.0
 
 # Template Engine

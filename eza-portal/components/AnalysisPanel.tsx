@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { useChatStore } from "@/stores/chatStore";
+import FullJsonView from "./analysis/FullJsonView";
 
 const RISK_COLORS: Record<string, string> = {
   none: "#6b7280",      // stone/gray
@@ -14,7 +14,6 @@ const RISK_COLORS: Record<string, string> = {
 export default function AnalysisPanel() {
   const selectedMessageId = useChatStore((s) => s.selectedMessageId);
   const messages = useChatStore((s) => s.messages);
-  const [showJson, setShowJson] = useState(false);
 
   // Find selected message
   let selectedMessage = selectedMessageId 
@@ -170,22 +169,12 @@ export default function AnalysisPanel() {
         </div>
       )}
 
-      {/* Full JSON View (Collapsible) */}
-      <div className="bg-neutral-900 border border-neutral-700 rounded-lg overflow-hidden">
-        <button
-          onClick={() => setShowJson(!showJson)}
-          className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-neutral-800 transition-colors"
-        >
-          <span className="text-neutral-400 text-sm">Full JSON View (DevTools)</span>
-          <span className="text-neutral-500">{showJson ? "▼" : "▶"}</span>
-        </button>
-        {showJson && (
-          <div className="px-4 pb-4">
-            <pre className="text-xs text-neutral-400 overflow-x-auto bg-neutral-950 p-3 rounded border border-neutral-800">
-              {JSON.stringify(selectedMessage.analysis, null, 2)}
-            </pre>
-          </div>
-        )}
+      {/* Full JSON View Button */}
+      <div className="flex justify-center">
+        <FullJsonView 
+          data={selectedMessage.analysis} 
+          messageId={selectedMessage.id}
+        />
       </div>
     </div>
   );

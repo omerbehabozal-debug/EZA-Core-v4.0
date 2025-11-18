@@ -11,7 +11,6 @@ export default function ChatInput() {
   const updateMessage = useChatStore((s) => s.updateMessage);
   const setAnalysis = useChatStore((s) => s.setAnalysis);
   const engineMode = useChatStore((s) => s.engineMode);
-  const depthMode = useChatStore((s) => s.depthMode);
   const provider = useChatStore((s) => s.provider);
   const [loading, setLoading] = useState(false);
 
@@ -53,136 +52,90 @@ export default function ChatInput() {
     setLoading(true);
 
     try {
-      if (engineMode === "standalone" || engineMode === "fast" || engineMode === "deep" || engineMode === "openai") {
-        const r = await fetch("/api/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            message: text,
-            mode: engineMode === "standalone" ? "standalone" : engineMode
-          })
+      // Determine endpoint based on mode
+      let endpoint = "/api/analyze";  // Default fallback
+      if (engineMode === "standalone") {
+        endpoint = "/api/standalone_chat";
+      } else if (engineMode === "proxy") {
+        endpoint = "/api/proxy_chat";
+      } else if (engineMode === "proxy_fast") {
+        endpoint = "/api/proxy_fast";
+      } else if (engineMode === "proxy_deep") {
+        endpoint = "/api/proxy_deep";
+      }
+
+      const r = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          message: text,
+          mode: engineMode
+        })
+      });
+
+      const j = await r.json();
+
+      if (j.ok) {
+        // Backend response format (from pipeline_runner)
+        const backendData = j;
+        
+        // Extract analysis data for messages (both user and assistant)
+        const messageAnalysis = {
+          eza_score: backendData.analysis?.eza_score?.eza_score || backendData.analysis?.eza_score?.final_score * 100,
+          risk_level: backendData.risk_level || "low",
+          intent: backendData.intent || "information",
+          intent_score: backendData.intent_score || 0.0,
+          bias: backendData.bias || "low",
+          safety: backendData.safety || "low",
+          rationale: backendData.analysis?.final?.explanation || backendData.analysis?.final?.reason,
+          flags: backendData.risk_flags || []
+        };
+
+        // Update user message with analysis
+        updateMessage(userMessageId, {
+          analysis: messageAnalysis
         });
-        const j = await r.json();
 
-        if (j.ok) {
-          const analyzed = j.data;
-          const fullAnalysis = {
-            ...analyzed,
-            _raw: analyzed._raw || analyzed
-          };
-          
-          // Extract analysis data for messages (both user and assistant)
-          const messageAnalysis = {
-            eza_score: analyzed.eza_score,
-            risk_level: analyzed.risk_level || analyzed._raw?.risk_level,
-            intent: analyzed.intent?.level || analyzed._raw?.intent?.primary,
-            intent_score: analyzed.intent?.score || analyzed._raw?.intent_score,
-            bias: analyzed.bias,
-            safety: analyzed.safety,
-            rationale: analyzed._raw?.alignment_meta?.rationale || analyzed._raw?.final_verdict?.explanation,
-            flags: analyzed._raw?.risk_flags || []
-          };
-
-          // Update user message with analysis
-          updateMessage(userMessageId, {
-            analysis: messageAnalysis
-          });
-
-          // Add audit log entry for user message
-          useChatStore.getState().addAuditLogEntry(messageAnalysis);
-          
-          const assistant =
-            analyzed.cleaned_output ||
-            analyzed.output ||
-            analyzed._raw?.rewritten_text ||
-            analyzed._raw?.model_outputs?.chatgpt ||
-            "EZA bir yanıt üretti.";
-
-          const assistantMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          addMessage({ 
-            id: assistantMessageId,
-            role: "assistant", 
-            text: assistant,
-            timestamp: Date.now(),
-            analysis: messageAnalysis
-          });
-          setAnalysis(fullAnalysis);
-          
-          // Add audit entry
-          useChatStore.getState().addAuditEntry({
-            timestamp: new Date().toISOString(),
-            message_id: assistantMessageId,
-            analysis_snapshot: fullAnalysis
-          });
-          
-          // Add audit log entry for assistant message
-          useChatStore.getState().addAuditLogEntry(messageAnalysis);
-          
-          // Auto-select last assistant message
-          useChatStore.getState().setSelectedMessageId(assistantMessageId);
-        } else {
-          const errorMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          addMessage({
-            id: errorMessageId,
-            role: "assistant",
-            text: `Hata: ${j.error || "EZA-Core analiz API yanıt vermedi."}`,
-            timestamp: Date.now()
-          });
-        }
+        // Add audit log entry for user message
+        useChatStore.getState().addAuditLogEntry(messageAnalysis);
+        
+        const assistantText = backendData.text || "EZA bir yanıt üretti.";
+        const assistantMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        addMessage({ 
+          id: assistantMessageId,
+          role: "assistant", 
+          text: assistantText,
+          timestamp: Date.now(),
+          analysis: messageAnalysis
+        });
+        
+        // Full analysis for right panel
+        const fullAnalysis = {
+          ...backendData,
+          _raw: backendData
+        };
+        setAnalysis(fullAnalysis);
+        
+        // Add audit entry
+        useChatStore.getState().addAuditEntry({
+          timestamp: new Date().toISOString(),
+          message_id: assistantMessageId,
+          analysis_snapshot: fullAnalysis
+        });
+        
+        // Add audit log entry for assistant message
+        useChatStore.getState().addAuditLogEntry(messageAnalysis);
+        
+        // Auto-select last assistant message
+        useChatStore.getState().setSelectedMessageId(assistantMessageId);
       } else {
-        // Proxy Mode
-        const r = await fetch("/api/proxy_chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: text,
-            mode: depthMode,
-            provider
-          })
+        const errorMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        addMessage({
+          id: errorMessageId,
+          role: "assistant",
+          text: `Hata: ${j.error || "EZA-Core analiz API yanıt vermedi."}`,
+          timestamp: Date.now()
         });
-
-        const j = await r.json();
-
-        if (!j.ok) {
-          const errorMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          addMessage({
-            id: errorMessageId,
-            role: "assistant",
-            text: `Proxy hata: ${j.error ?? "bilinmeyen hata"}`,
-            timestamp: Date.now()
-          });
-        } else {
-          const { data } = j;
-          const proxyAnalysis = data.analysis || undefined;
-          
-          // Update user message with analysis if available
-          if (proxyAnalysis) {
-            updateMessage(userMessageId, {
-              analysis: proxyAnalysis
-            });
-            // Add audit log entry for user message
-            useChatStore.getState().addAuditLogEntry(proxyAnalysis);
-          }
-          
-          const assistantText = data.llm_output ?? "LLM cevabı alınamadı.";
-          const assistantMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          addMessage({ 
-            id: assistantMessageId,
-            role: "assistant", 
-            text: assistantText,
-            timestamp: Date.now(),
-            analysis: proxyAnalysis
-          });
-          setAnalysis(data);
-          
-          // Add audit log entry for assistant message if analysis exists
-          if (proxyAnalysis) {
-            useChatStore.getState().addAuditLogEntry(proxyAnalysis);
-          }
-          
-          // Auto-select last assistant message
-          useChatStore.getState().setSelectedMessageId(assistantMessageId);
-        }
       }
     } catch (err: any) {
       const errorMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -212,13 +165,17 @@ export default function ChatInput() {
         {/* Mode Indicator (Left) */}
         <div className="hidden md:flex flex-col items-center gap-1 text-xs text-text-dim">
           <div className="w-8 h-8 rounded-full bg-panel/50 flex items-center justify-center">
-            {engineMode === "deep" && "🔵"}
+            {engineMode === "proxy_deep" && "🔵"}
             {engineMode === "proxy" && "🟡"}
+            {engineMode === "proxy_fast" && "⚡"}
             {engineMode === "standalone" && "⚪"}
-            {engineMode === "fast" && "⚡"}
-            {engineMode === "openai" && "🤖"}
           </div>
-          <span className="text-[10px]">{engineMode}</span>
+          <span className="text-[10px]">
+            {engineMode === "proxy_deep" && "Deep"}
+            {engineMode === "proxy" && "Normal"}
+            {engineMode === "proxy_fast" && "Fast"}
+            {engineMode === "standalone" && "Standalone"}
+          </span>
         </div>
 
         {/* Input Area */}

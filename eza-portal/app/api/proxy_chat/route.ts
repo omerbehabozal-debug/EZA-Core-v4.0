@@ -55,35 +55,66 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1) Input EZA analizi
-    const input_analysis = await callEzaAnalyze(message, mode);
+    // 1) Input EZA analizi (basit versiyon - sadece input analizi için)
+    // Full analysis için backend /proxy_chat endpoint'ini kullan
+    const input_analysis_resp = await fetch("http://localhost:8000/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: message, mode: "fast" })
+    });
+    const input_analysis = await input_analysis_resp.json();
 
-    // 2) LLM cevabı
-    let llm_output = "";
-    if (provider === "openai") {
-      llm_output = await callOpenAiLLM(message);
-    } else {
-      llm_output = `[${provider}] henüz entegre edilmedi. Örnek cevap: Bu bir placeholder LLM cevabıdır.`;
+    // 2) Backend /proxy_chat endpoint'ini kullan (tüm analizleri backend yapar)
+    const proxy_resp = await fetch("http://localhost:8000/proxy_chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        text: message,
+        mode: "proxy"  // Normal proxy mode
+      })
+    });
+
+    if (!proxy_resp.ok) {
+      return NextResponse.json({
+        ok: false,
+        error: `Backend error: ${proxy_resp.status} ${proxy_resp.statusText}`
+      });
     }
 
-    // 3) Deep Mode ise output için de EZA analizi
-    let output_analysis: any = null;
-    if (mode === "deep") {
-      output_analysis = await callEzaAnalyze(
-        `USER:\n${message}\n\nMODEL:\n${llm_output}`,
-        mode
-      );
-    }
+    const backendData = await proxy_resp.json();
+
+    // 3) Backend'den gelen veriyi frontend formatına dönüştür
+    const transformedData = {
+      ok: true,
+      mode,
+      provider,
+      llm_output: backendData.text || backendData.analysis?.output?.output_text || "",
+      input_analysis: backendData.analysis?.input || input_analysis,
+      output_analysis: backendData.analysis?.output || null,
+      alignment: backendData.analysis?.alignment || null,
+      final_verdict: backendData.analysis?.final || null,
+      eza_score: backendData.analysis?.eza_score || null,
+      reasoning_shield: backendData.analysis?.reasoning_shield || null,
+      // Frontend UI compatibility
+      cleaned_output: backendData.text || "",
+      output: backendData.text || "",
+      eza_score_value: backendData.analysis?.eza_score?.eza_score || null,
+      intent: backendData.intent ? {
+        level: backendData.intent,
+        summary: backendData.intent,
+        score: backendData.intent_score || 0.0
+      } : null,
+      bias: backendData.bias || "low",
+      safety: backendData.safety || "low",
+      risk_level: backendData.risk_level || "none",
+      reasons: backendData.analysis?.final?.reason ? [backendData.analysis.final.reason] : null,
+      // Raw backend data
+      _raw: backendData
+    };
 
     return NextResponse.json({
       ok: true,
-      data: {
-        mode,
-        provider,
-        llm_output,
-        input_analysis,
-        output_analysis
-      }
+      data: transformedData
     });
   } catch (err: any) {
     return NextResponse.json({

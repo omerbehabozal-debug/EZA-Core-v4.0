@@ -16,6 +16,7 @@ from backend.api.input_analyzer import analyze_input
 from backend.api.output_analyzer import analyze_output, evaluate_output
 from backend.api.alignment_engine import compute_alignment
 from backend.api.advisor import generate_advice, generate_rewritten_answer, build_standalone_response
+from backend.ai.model_client import LLMClient
 from backend.api.narrative_engine import NarrativeEngine
 from backend.api.reasoning_shield import ReasoningShield
 from backend.api.report_builder import ReportBuilder
@@ -420,10 +421,14 @@ async def analyze(req: AnalyzeRequest, request: Request):
                 fallback_response = request.app.state.response_composer.compose_fallback_response()
                 model_outputs = {"chatgpt": fallback_response}
     elif model == "multi":
-        model_outputs = call_multi_models(text)
+        model_outputs = await call_multi_models(text)
     else:
-        out = call_single_model(text, model_name=model)
-        model_outputs = {model: out}
+        out = await call_single_model(text, model_name=model, mode=mode)
+        if out is None:
+            # Standalone mode - already handled above
+            pass
+        else:
+            model_outputs = {model: out}
 
     # 3) Output analizi – ilk model üzerinden (input_analysis ile)
     output_analyses: Dict[str, Any] = {}
@@ -1071,23 +1076,15 @@ async def lab_dashboard(request: Request):
 
 
 # -------------------------------------------------
-# /proxy_chat – Proxy Mode Endpoint for External LLM Integration
+# /standalone_chat – Standalone Mode Endpoint
 # -------------------------------------------------
 
-@app.post("/proxy_chat")
-async def proxy_chat(req: AnalyzeRequest, request: Request):
+@app.post("/standalone_chat")
+async def standalone_chat(req: AnalyzeRequest, request: Request):
     """
-    Proxy mode endpoint for external LLM integration.
-    
-    This endpoint:
-    1. Analyzes user input with EZA
-    2. Calls external LLM (OpenAI, Anthropic, etc.)
-    3. Analyzes LLM output with EZA
-    4. Returns combined response with analysis
+    Standalone mode endpoint - EZA generates its own response without LLM.
     """
     text = req.text or req.query or ""
-    mode = (req.mode or "fast").lower()
-    model = (req.model or "chatgpt").lower()
     
     if not text:
         return JSONResponse(
@@ -1095,57 +1092,77 @@ async def proxy_chat(req: AnalyzeRequest, request: Request):
             status_code=400
         )
     
-    # 1) Input EZA analizi (fast mode için basitleştirilmiş)
-    input_scores = analyze_input(text)
+    # Run pipeline in standalone mode
+    report = await run_pipeline(text, "standalone", request)
     
-    # 2) External LLM çağrısı (simülasyon - gerçek API entegrasyonu için genişletilebilir)
-    # TODO: Gerçek OpenAI/Anthropic API entegrasyonu eklenebilir
-    if model == "chatgpt" or model == "openai":
-        # Simulated response for now
-        llm_output = f"[Simulated LLM Response] {text}"
-    else:
-        llm_output = f"[Simulated {model} Response] {text}"
+    return JSONResponse(report)
+
+
+# -------------------------------------------------
+# /proxy_fast – Proxy Fast Mode Endpoint
+# -------------------------------------------------
+
+@app.post("/proxy_fast")
+async def proxy_fast(req: AnalyzeRequest, request: Request):
+    """
+    Proxy Fast mode endpoint - LLM call + Light analysis (Level 1-5 only).
+    """
+    text = req.text or req.query or ""
     
-    # 3) Output analizi (deep mode için detaylı, fast mode için basit)
-    if mode == "deep":
-        output_scores = analyze_output(llm_output, model=model, input_analysis=input_scores)
-    else:
-        # Fast mode: Basit output analizi
-        output_scores = {
-            "ok": True,
-            "model": model,
-            "output_text": llm_output,
-            "risk_flags": [],
-            "risk_score": 0.0,
-            "risk_level": "low",
-            "emotional_tone": "neutral",
-            "analysis": {
-                "quality_score": 50,
-                "helpfulness": "Fast mode analysis.",
-                "safety_issues": [],
-                "policy_violations": [],
-                "summary": "Fast mode output analysis.",
-            },
-        }
+    if not text:
+        return JSONResponse(
+            {"ok": False, "error": "Text is required"},
+            status_code=400
+        )
     
-    # 4) Alignment hesaplama
-    alignment_meta = compute_alignment(
-        input_analysis=input_scores,
-        output_analysis=output_scores,
-    )
+    # Run pipeline in proxy_fast mode
+    report = await run_pipeline(text, "proxy_fast", request)
     
-    # 5) Basit rapor oluştur
-    report = {
-        "ok": True,
-        "mode": mode,
-        "model": model,
-        "input_analysis": input_scores,
-        "output_analysis": output_scores,
-        "alignment_meta": alignment_meta,
-        "llm_output": llm_output,
-        "risk_level": input_scores.get("risk_level", "low"),
-        "risk_flags": input_scores.get("risk_flags", []),
-    }
+    return JSONResponse(report)
+
+
+# -------------------------------------------------
+# /proxy_deep – Proxy Deep Mode Endpoint
+# -------------------------------------------------
+
+@app.post("/proxy_deep")
+async def proxy_deep(req: AnalyzeRequest, request: Request):
+    """
+    Proxy Deep mode endpoint - LLM call + Full analysis (Level 1-10).
+    """
+    text = req.text or req.query or ""
+    
+    if not text:
+        return JSONResponse(
+            {"ok": False, "error": "Text is required"},
+            status_code=400
+        )
+    
+    # Run pipeline in proxy_deep mode
+    report = await run_pipeline(text, "proxy_deep", request)
+    
+    return JSONResponse(report)
+
+
+# -------------------------------------------------
+# /proxy_chat – Proxy Normal Mode Endpoint (Updated)
+# -------------------------------------------------
+
+@app.post("/proxy_chat")
+async def proxy_chat(req: AnalyzeRequest, request: Request):
+    """
+    Proxy Normal mode endpoint - LLM call + Full analysis (default proxy mode).
+    """
+    text = req.text or req.query or ""
+    
+    if not text:
+        return JSONResponse(
+            {"ok": False, "error": "Text is required"},
+            status_code=400
+        )
+    
+    # Run pipeline in proxy mode (normal = full analysis)
+    report = await run_pipeline(text, "proxy", request)
     
     return JSONResponse(report)
 
