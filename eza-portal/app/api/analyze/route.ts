@@ -53,6 +53,18 @@ export async function POST(req: NextRequest) {
       bias: backendData.bias || backendData.critical_bias?.level || "low",
       safety: backendData.safety || backendData.reasoning_shield?.final_risk_level || backendData.risk_level || "low",
       
+      // Risk level for Why This Score panel
+      risk_level: backendData.risk_level || "none",
+      
+      // Reasons for Why This Score panel (from alignment_meta or final_verdict)
+      reasons: backendData.alignment_meta?.rationale 
+        ? [backendData.alignment_meta.rationale]
+        : backendData.alignment_meta?.eza_advice
+        ? [backendData.alignment_meta.eza_advice]
+        : backendData.final_verdict?.explanation
+        ? [backendData.final_verdict.explanation]
+        : null,
+      
       // LEVEL 7 – Critical Bias Engine (backend'den geliyor)
       critical_bias: backendData.critical_bias || null,
       

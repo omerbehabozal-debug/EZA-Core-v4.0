@@ -1,280 +1,192 @@
 "use client";
 
+import { useState } from "react";
 import { useChatStore } from "@/stores/chatStore";
 
+const RISK_COLORS: Record<string, string> = {
+  none: "#6b7280",      // stone/gray
+  low: "#22c55e",       // green
+  medium: "#fbbf24",    // yellow
+  high: "#fb923c",      // orange
+  critical: "#ef4444",  // red
+};
+
 export default function AnalysisPanel() {
-  const analysis = useChatStore((s) => s.analysis);
-  const engineMode = useChatStore((s) => s.engineMode);
-  const depthMode = useChatStore((s) => s.depthMode);
+  const selectedMessageId = useChatStore((s) => s.selectedMessageId);
+  const messages = useChatStore((s) => s.messages);
+  const [showJson, setShowJson] = useState(false);
 
-  if (!analysis) {
-    return (
-      <div className="w-full p-4">
-        <div className="text-neutral-500 text-sm">
-          ⓘ Analiz sonuçları burada görünecek.
-        </div>
-      </div>
-    );
+  // Find selected message
+  let selectedMessage = selectedMessageId 
+    ? messages.find(m => m.id === selectedMessageId)
+    : null;
+
+  // Fallback: if no message selected, use last message with analysis
+  if (!selectedMessage) {
+    const messagesWithAnalysis = messages.filter(m => m.analysis);
+    selectedMessage = messagesWithAnalysis.at(-1) || null;
   }
 
-  // Standalone mod: eski /analyze response
-  if (engineMode === "standalone") {
-    // Backend'den gelen raw data'yı kontrol et
-    const rawData = analysis._raw || analysis;
-    
+  // If no message with analysis found, show placeholder
+  if (!selectedMessage || !selectedMessage.analysis) {
     return (
-      <div className="w-full p-4 space-y-4">
-        {/* EZA Score */}
-        <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
-          <h3 className="text-neutral-300 text-sm">EZA Skoru</h3>
-          <p className="text-2xl font-semibold mt-1">
-            {analysis.eza_score?.eza_score ?? analysis.eza_score ?? rawData.eza_alignment?.alignment_score ?? rawData.reasoning_shield?.alignment_score ?? "—"}
+      <div className="w-full h-full p-6 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full bg-panel/30 flex items-center justify-center mb-4 mx-auto">
+            <span className="text-2xl">⚖</span>
+          </div>
+          <p className="text-neutral-400 text-sm">
+            Bir mesajın risk noktasına tıklayarak analiz detaylarını görüntüleyin.
           </p>
-          {rawData.reasoning_shield && (
-            <p className="text-neutral-400 text-xs mt-1">
-              Risk Level: {rawData.reasoning_shield.final_risk_level ?? rawData.risk_level ?? "—"}
-            </p>
-          )}
         </div>
-
-        {/* Intent */}
-        {(analysis.intent || rawData.intent || rawData.intent_engine) && (
-          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
-            <h3 className="text-neutral-300 text-sm">Niyet Analizi</h3>
-            <p className="text-lg font-medium mt-1">
-              {analysis.intent?.level ?? rawData.intent?.primary ?? rawData.intent_engine?.primary ?? rawData.risk_level ?? "—"}
-            </p>
-            <p className="text-neutral-400 text-xs mt-1">
-              {analysis.intent?.summary ?? rawData.intent?.primary ?? "Intent analysis completed"}
-            </p>
-            {rawData.intent_engine && (
-              <p className="text-neutral-400 text-xs mt-1">
-                Risk Score: {rawData.intent_engine.risk_score ?? rawData.risk_score ?? "—"}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* LEVEL 7 – Critical Bias Engine */}
-        {(analysis.critical_bias || rawData.critical_bias) && (
-          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
-            <h3 className="text-neutral-300 text-sm">LEVEL 7 – Critical Bias</h3>
-            <p className="text-lg font-medium mt-1">
-              {(analysis.critical_bias || rawData.critical_bias)?.level ?? "—"}
-            </p>
-            <p className="text-neutral-400 text-xs mt-1">
-              Skor: {(analysis.critical_bias || rawData.critical_bias)?.bias_score ?? "—"}
-            </p>
-            {(analysis.critical_bias || rawData.critical_bias)?.summary && (
-              <p className="text-neutral-400 text-xs mt-1">
-                {(analysis.critical_bias || rawData.critical_bias).summary}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* LEVEL 9 – Abuse & Coercion Engine */}
-        {(analysis.abuse || rawData.abuse) && (
-          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
-            <h3 className="text-neutral-300 text-sm">LEVEL 9 – Abuse & Coercion</h3>
-            <p className="text-lg font-medium mt-1">
-              {(analysis.abuse || rawData.abuse)?.level ?? "—"}
-            </p>
-            {(analysis.abuse || rawData.abuse)?.score !== undefined && (
-              <p className="text-neutral-400 text-xs mt-1">
-                Skor: {(analysis.abuse || rawData.abuse).score}
-              </p>
-            )}
-            {(analysis.abuse || rawData.abuse)?.summary && (
-              <p className="text-neutral-400 text-xs mt-1">
-                {(analysis.abuse || rawData.abuse).summary}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* LEVEL 8 – Moral Compass Engine */}
-        {(analysis.moral_compass || rawData.moral_compass) && (
-          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
-            <h3 className="text-neutral-300 text-sm">LEVEL 8 – Moral Compass</h3>
-            <p className="text-lg font-medium mt-1">
-              {(analysis.moral_compass || rawData.moral_compass)?.level ?? "—"}
-            </p>
-            {(analysis.moral_compass || rawData.moral_compass)?.score !== undefined && (
-              <p className="text-neutral-400 text-xs mt-1">
-                Skor: {(analysis.moral_compass || rawData.moral_compass).score}
-              </p>
-            )}
-            {(analysis.moral_compass || rawData.moral_compass)?.summary && (
-              <p className="text-neutral-400 text-xs mt-1">
-                {(analysis.moral_compass || rawData.moral_compass).summary}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* LEVEL 10 – Memory Consistency Engine */}
-        {(analysis.memory_consistency || rawData.memory_consistency) && (
-          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
-            <h3 className="text-neutral-300 text-sm">LEVEL 10 – Memory Consistency</h3>
-            <p className="text-lg font-medium mt-1">
-              {(analysis.memory_consistency || rawData.memory_consistency)?.level ?? "—"}
-            </p>
-            {(analysis.memory_consistency || rawData.memory_consistency)?.score !== undefined && (
-              <p className="text-neutral-400 text-xs mt-1">
-                Skor: {(analysis.memory_consistency || rawData.memory_consistency).score}
-              </p>
-            )}
-            {(analysis.memory_consistency || rawData.memory_consistency)?.summary && (
-              <p className="text-neutral-400 text-xs mt-1">
-                {(analysis.memory_consistency || rawData.memory_consistency).summary}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Additional Level 5-6 modules */}
-        {rawData.drift_matrix && (
-          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
-            <h3 className="text-neutral-300 text-sm">Drift Matrix</h3>
-            <p className="text-neutral-400 text-xs mt-1">
-              {rawData.drift_matrix.summary || "Drift analysis completed"}
-            </p>
-          </div>
-        )}
-
-        {/* Level 5 – EZA Score */}
-        {(rawData.eza_score || analysis.eza_score_full) && (
-          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
-            <h3 className="text-neutral-300 text-sm">EZA Score (Level 5)</h3>
-            <p className="text-lg font-medium mt-1">
-              {(rawData.eza_score || analysis.eza_score_full)?.eza_score ?? 
-               (rawData.eza_score || analysis.eza_score_full)?.score ?? "—"}
-            </p>
-            {(rawData.eza_score || analysis.eza_score_full)?.summary && (
-              <p className="text-neutral-400 text-xs mt-1">
-                {(rawData.eza_score || analysis.eza_score_full).summary}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Level 5 – Final Verdict */}
-        {(rawData.final_verdict || analysis.final_verdict) && (
-          <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow">
-            <h3 className="text-neutral-300 text-sm">Final Verdict (Level 5)</h3>
-            <p className="text-lg font-medium mt-1">
-              {(rawData.final_verdict || analysis.final_verdict)?.level ?? "—"}
-            </p>
-            {(rawData.final_verdict || analysis.final_verdict)?.reason && (
-              <p className="text-neutral-400 text-xs mt-1">
-                {(rawData.final_verdict || analysis.final_verdict).reason}
-              </p>
-            )}
-          </div>
-        )}
       </div>
     );
   }
 
-  // Proxy mode analizi: input + output
-  const input = analysis.input_analysis;
-  const output = analysis.output_analysis;
-  const inputRaw = input?._raw || input;
-  const outputRaw = output?._raw || output;
+  const analysis = selectedMessage.analysis;
+  const riskColor = RISK_COLORS[analysis.risk_level?.toLowerCase() || "none"] || RISK_COLORS.none;
 
   return (
-    <div className="w-full p-4 space-y-4">
-      <h2 className="text-lg font-semibold mb-2">
-        Etik Analiz (Proxy — {depthMode.toUpperCase()})
-      </h2>
-
-      {/* Input analizi */}
-      {input && (
-        <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow space-y-2">
-          <h3 className="text-neutral-300 text-sm font-semibold">Input Analizi</h3>
-          <div>
-            <p className="text-xs text-neutral-400">EZA Skoru</p>
-            <p className="text-lg font-medium">
-              {input.eza_score?.eza_score ?? input.eza_score ?? inputRaw?.eza_alignment?.alignment_score ?? inputRaw?.eza_score?.eza_score ?? "—"}
-            </p>
+    <div className="w-full h-full overflow-y-auto p-6 space-y-6">
+      {/* EZA Score - Circular with colored border */}
+      <div className="flex flex-col items-center">
+        <div className="relative w-32 h-32">
+          {/* Outer circle with risk color */}
+          <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 120 120">
+            {/* Background circle */}
+            <circle
+              cx="60"
+              cy="60"
+              r="54"
+              fill="none"
+              stroke="rgba(107, 114, 128, 0.2)"
+              strokeWidth="8"
+            />
+            {/* Progress circle with risk color */}
+            <circle
+              cx="60"
+              cy="60"
+              r="54"
+              fill="none"
+              stroke={riskColor}
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={`${2 * Math.PI * 54}`}
+              strokeDashoffset={`${2 * Math.PI * 54 * (1 - (analysis.eza_score || 0) / 100)}`}
+              style={{ transition: "stroke-dashoffset 0.5s ease" }}
+            />
+          </svg>
+          {/* Center content */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-3xl font-bold" style={{ color: riskColor }}>
+                {analysis.eza_score?.toFixed(0) || "—"}
+              </div>
+              <div className="text-xs text-neutral-400 mt-1">EZA Score</div>
+            </div>
           </div>
-          {input.intent && (
-            <div>
-              <p className="text-xs text-neutral-400">Niyet</p>
-              <p className="text-sm">{input.intent.level ?? inputRaw?.intent?.primary ?? "—"}</p>
+        </div>
+      </div>
+
+      {/* Risk Level */}
+      <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-neutral-400 text-sm">Risk Level</span>
+          <span 
+            className="px-3 py-1 rounded-full text-sm font-medium"
+            style={{ 
+              backgroundColor: `${riskColor}20`,
+              color: riskColor,
+              border: `1px solid ${riskColor}40`
+            }}
+          >
+            {analysis.risk_level || "none"}
+          </span>
+        </div>
+      </div>
+
+      {/* Intent + Score */}
+      {analysis.intent && (
+        <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-neutral-400 text-sm">Intent</span>
+              <span className="text-neutral-300 font-medium">{analysis.intent}</span>
             </div>
-          )}
-          {/* LEVEL 9 – Abuse */}
-          {(input.abuse || inputRaw?.abuse) && (
-            <div>
-              <p className="text-xs text-neutral-400">LEVEL 9 – Abuse</p>
-              <p className="text-sm">{(input.abuse || inputRaw?.abuse)?.level ?? "—"}</p>
-            </div>
-          )}
-          {/* LEVEL 7 – Critical Bias */}
-          {(input.critical_bias || inputRaw?.critical_bias) && (
-            <div>
-              <p className="text-xs text-neutral-400">LEVEL 7 – Critical Bias</p>
-              <p className="text-sm">{(input.critical_bias || inputRaw?.critical_bias)?.level ?? "—"}</p>
-            </div>
-          )}
-          {/* LEVEL 8 – Moral Compass */}
-          {(input.moral_compass || inputRaw?.moral_compass) && (
-            <div>
-              <p className="text-xs text-neutral-400">LEVEL 8 – Moral Compass</p>
-              <p className="text-sm">{(input.moral_compass || inputRaw?.moral_compass)?.level ?? "—"}</p>
-            </div>
-          )}
+            {analysis.intent_score !== undefined && (
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-400 text-sm">Intent Score</span>
+                <span className="text-neutral-300">{analysis.intent_score.toFixed(2)}</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Output analizi */}
-      {output ? (
-        <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow space-y-2">
-          <h3 className="text-neutral-300 text-sm font-semibold">Output Analizi</h3>
-          <div>
-            <p className="text-xs text-neutral-400">EZA Skoru</p>
-            <p className="text-lg font-medium">
-              {output.eza_score?.eza_score ?? output.eza_score ?? outputRaw?.eza_alignment?.alignment_score ?? outputRaw?.eza_score?.eza_score ?? "—"}
-            </p>
+      {/* Safety */}
+      {analysis.safety && (
+        <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-neutral-400 text-sm">Safety</span>
+            <span className="text-neutral-300 font-medium">{analysis.safety}</span>
           </div>
-          {output.intent && (
-            <div>
-              <p className="text-xs text-neutral-400">Niyet</p>
-              <p className="text-sm">{output.intent.level ?? outputRaw?.intent?.primary ?? "—"}</p>
-            </div>
-          )}
-          {/* LEVEL 9 – Abuse */}
-          {(output.abuse || outputRaw?.abuse) && (
-            <div>
-              <p className="text-xs text-neutral-400">LEVEL 9 – Abuse</p>
-              <p className="text-sm">{(output.abuse || outputRaw?.abuse)?.level ?? "—"}</p>
-            </div>
-          )}
-          {/* LEVEL 7 – Critical Bias */}
-          {(output.critical_bias || outputRaw?.critical_bias) && (
-            <div>
-              <p className="text-xs text-neutral-400">LEVEL 7 – Critical Bias</p>
-              <p className="text-sm">{(output.critical_bias || outputRaw?.critical_bias)?.level ?? "—"}</p>
-            </div>
-          )}
-          {/* LEVEL 8 – Moral Compass */}
-          {(output.moral_compass || outputRaw?.moral_compass) && (
-            <div>
-              <p className="text-xs text-neutral-400">LEVEL 8 – Moral Compass</p>
-              <p className="text-sm">{(output.moral_compass || outputRaw?.moral_compass)?.level ?? "—"}</p>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="bg-[#111418] border border-neutral-800 p-4 rounded-xl shadow text-neutral-400 text-xs">
-          {depthMode === "fast"
-            ? "Fast Mode: Çıkış analizi minimal veya atlanmış olabilir."
-            : "Output analizi mevcut değil."}
         </div>
       )}
+
+      {/* Bias */}
+      {analysis.bias && (
+        <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-neutral-400 text-sm">Bias</span>
+            <span className="text-neutral-300 font-medium">{analysis.bias}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Flags */}
+      {analysis.flags && analysis.flags.length > 0 && (
+        <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4">
+          <div className="space-y-2">
+            <span className="text-neutral-400 text-sm block mb-2">Flags</span>
+            <div className="flex flex-wrap gap-2">
+              {analysis.flags.map((flag: string, index: number) => (
+                <span
+                  key={index}
+                  className="px-2 py-1 rounded bg-red-500/20 text-red-400 text-xs border border-red-500/30"
+                >
+                  {flag}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Why This Score? */}
+      {analysis.rationale && (
+        <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-4">
+          <h3 className="text-neutral-300 text-sm font-medium mb-2">Why this score?</h3>
+          <p className="text-neutral-400 text-sm leading-relaxed">{analysis.rationale}</p>
+        </div>
+      )}
+
+      {/* Full JSON View (Collapsible) */}
+      <div className="bg-neutral-900 border border-neutral-700 rounded-lg overflow-hidden">
+        <button
+          onClick={() => setShowJson(!showJson)}
+          className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-neutral-800 transition-colors"
+        >
+          <span className="text-neutral-400 text-sm">Full JSON View (DevTools)</span>
+          <span className="text-neutral-500">{showJson ? "▼" : "▶"}</span>
+        </button>
+        {showJson && (
+          <div className="px-4 pb-4">
+            <pre className="text-xs text-neutral-400 overflow-x-auto bg-neutral-950 p-3 rounded border border-neutral-800">
+              {JSON.stringify(selectedMessage.analysis, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-

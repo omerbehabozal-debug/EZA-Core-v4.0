@@ -1,6 +1,11 @@
+import { MessageAnalysis } from "@/stores/chatStore";
+
 export interface Message {
+  id: string;
   role: "user" | "assistant";
   text: string;
+  timestamp: number;
+  analysis?: MessageAnalysis;
 }
 
 export interface Analysis {

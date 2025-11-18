@@ -8,6 +8,7 @@ export default function ChatInput() {
   const [placeholder, setPlaceholder] = useState("Mesaj yaz...");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const addMessage = useChatStore((s) => s.addMessage);
+  const updateMessage = useChatStore((s) => s.updateMessage);
   const setAnalysis = useChatStore((s) => s.setAnalysis);
   const engineMode = useChatStore((s) => s.engineMode);
   const depthMode = useChatStore((s) => s.depthMode);
@@ -41,7 +42,13 @@ export default function ChatInput() {
     if (!message.trim() || loading) return;
 
     const text = message.trim();
-    addMessage({ role: "user", text });
+    const userMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    addMessage({ 
+      id: userMessageId,
+      role: "user", 
+      text,
+      timestamp: Date.now()
+    });
     setMessage("");
     setLoading(true);
 
@@ -64,6 +71,26 @@ export default function ChatInput() {
             _raw: analyzed._raw || analyzed
           };
           
+          // Extract analysis data for messages (both user and assistant)
+          const messageAnalysis = {
+            eza_score: analyzed.eza_score,
+            risk_level: analyzed.risk_level || analyzed._raw?.risk_level,
+            intent: analyzed.intent?.level || analyzed._raw?.intent?.primary,
+            intent_score: analyzed.intent?.score || analyzed._raw?.intent_score,
+            bias: analyzed.bias,
+            safety: analyzed.safety,
+            rationale: analyzed._raw?.alignment_meta?.rationale || analyzed._raw?.final_verdict?.explanation,
+            flags: analyzed._raw?.risk_flags || []
+          };
+
+          // Update user message with analysis
+          updateMessage(userMessageId, {
+            analysis: messageAnalysis
+          });
+
+          // Add audit log entry for user message
+          useChatStore.getState().addAuditLogEntry(messageAnalysis);
+          
           const assistant =
             analyzed.cleaned_output ||
             analyzed.output ||
@@ -71,12 +98,35 @@ export default function ChatInput() {
             analyzed._raw?.model_outputs?.chatgpt ||
             "EZA bir yanıt üretti.";
 
-          addMessage({ role: "assistant", text: assistant });
+          const assistantMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          addMessage({ 
+            id: assistantMessageId,
+            role: "assistant", 
+            text: assistant,
+            timestamp: Date.now(),
+            analysis: messageAnalysis
+          });
           setAnalysis(fullAnalysis);
+          
+          // Add audit entry
+          useChatStore.getState().addAuditEntry({
+            timestamp: new Date().toISOString(),
+            message_id: assistantMessageId,
+            analysis_snapshot: fullAnalysis
+          });
+          
+          // Add audit log entry for assistant message
+          useChatStore.getState().addAuditLogEntry(messageAnalysis);
+          
+          // Auto-select last assistant message
+          useChatStore.getState().setSelectedMessageId(assistantMessageId);
         } else {
+          const errorMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           addMessage({
+            id: errorMessageId,
             role: "assistant",
-            text: `Hata: ${j.error || "EZA-Core analiz API yanıt vermedi."}`
+            text: `Hata: ${j.error || "EZA-Core analiz API yanıt vermedi."}`,
+            timestamp: Date.now()
           });
         }
       } else {
@@ -94,21 +144,53 @@ export default function ChatInput() {
         const j = await r.json();
 
         if (!j.ok) {
+          const errorMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           addMessage({
+            id: errorMessageId,
             role: "assistant",
-            text: `Proxy hata: ${j.error ?? "bilinmeyen hata"}`
+            text: `Proxy hata: ${j.error ?? "bilinmeyen hata"}`,
+            timestamp: Date.now()
           });
         } else {
           const { data } = j;
+          const proxyAnalysis = data.analysis || undefined;
+          
+          // Update user message with analysis if available
+          if (proxyAnalysis) {
+            updateMessage(userMessageId, {
+              analysis: proxyAnalysis
+            });
+            // Add audit log entry for user message
+            useChatStore.getState().addAuditLogEntry(proxyAnalysis);
+          }
+          
           const assistantText = data.llm_output ?? "LLM cevabı alınamadı.";
-          addMessage({ role: "assistant", text: assistantText });
+          const assistantMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          addMessage({ 
+            id: assistantMessageId,
+            role: "assistant", 
+            text: assistantText,
+            timestamp: Date.now(),
+            analysis: proxyAnalysis
+          });
           setAnalysis(data);
+          
+          // Add audit log entry for assistant message if analysis exists
+          if (proxyAnalysis) {
+            useChatStore.getState().addAuditLogEntry(proxyAnalysis);
+          }
+          
+          // Auto-select last assistant message
+          useChatStore.getState().setSelectedMessageId(assistantMessageId);
         }
       }
     } catch (err: any) {
+      const errorMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       addMessage({
+        id: errorMessageId,
         role: "assistant",
-        text: `İstek sırasında hata oluştu: ${err?.message ?? "bilinmiyor"}`
+        text: `İstek sırasında hata oluştu: ${err?.message ?? "bilinmiyor"}`,
+        timestamp: Date.now()
       });
     } finally {
       setLoading(false);

@@ -4,13 +4,13 @@ import { useRef, useEffect } from "react";
 import { useChatStore } from "@/stores/chatStore";
 import MessageBubble from "./MessageBubble";
 import ChatInput from "./ChatInput";
-import AnalysisPanel from "./AnalysisPanel";
+import AnalysisPanel from "@/components/AnalysisPanel";
 import ModeSwitcher from "./ModeSwitcher";
 
 export default function ChatLayout() {
   const messages = useChatStore((s) => s.messages);
-  const analysis = useChatStore((s) => s.analysis);
-  const selectedMessageIndex = useChatStore((s) => s.selectedMessageIndex);
+  const selectedMessageId = useChatStore((s) => s.selectedMessageId);
+  const setSelectedMessageId = useChatStore((s) => s.setSelectedMessageId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
@@ -18,16 +18,15 @@ export default function ChatLayout() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Get analysis for each message (simplified - in real app, store analysis per message)
-  // For now, we show analysis for the last assistant message
-  const getMessageAnalysis = (index: number) => {
-    const msg = messages[index];
-    // Show analysis for the last assistant message that has analysis
-    if (msg.role === "assistant" && index === messages.length - 1 && analysis) {
-      return analysis;
+  // Auto-select last message with analysis if no message is selected
+  useEffect(() => {
+    if (!selectedMessageId && messages.length > 0) {
+      const lastMessageWithAnalysis = [...messages].reverse().find(m => m.analysis);
+      if (lastMessageWithAnalysis) {
+        setSelectedMessageId(lastMessageWithAnalysis.id);
+      }
     }
-    return null;
-  };
+  }, [messages, selectedMessageId, setSelectedMessageId]);
 
   return (
     <div className="flex flex-col h-screen bg-bg overflow-hidden">
@@ -68,11 +67,9 @@ export default function ChatLayout() {
               <>
                 {messages.map((m, i) => (
                   <MessageBubble
-                    key={i}
-                    role={m.role}
-                    text={m.text}
+                    key={m.id || i}
+                    message={m}
                     index={i}
-                    analysis={getMessageAnalysis(i)}
                   />
                 ))}
                 <div ref={messagesEndRef} />
@@ -90,17 +87,17 @@ export default function ChatLayout() {
         </div>
 
         {/* Analysis Panel - Mobile Bottom Sheet */}
-        {selectedMessageIndex !== null && analysis && (
+        {selectedMessageId !== null && (
           <>
             <div
               className="lg:hidden fixed inset-0 bg-black/50 z-40"
-              onClick={() => useChatStore.getState().setSelectedMessageIndex(null)}
+              onClick={() => useChatStore.getState().setSelectedMessageId(null)}
             />
             <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-bg-light border-t border-panel/50 rounded-t-2xl z-50 max-h-[80vh] overflow-hidden flex flex-col">
               <div className="flex items-center justify-between p-4 border-b border-panel/50">
                 <h2 className="text-lg font-semibold">Etik Analiz</h2>
                 <button
-                  onClick={() => useChatStore.getState().setSelectedMessageIndex(null)}
+                  onClick={() => useChatStore.getState().setSelectedMessageId(null)}
                   className="text-text-dim hover:text-text"
                 >
                   ✕
