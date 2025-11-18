@@ -65,14 +65,14 @@ from backend.middleware.error_handler import (
 
 app = FastAPI(title="EZA-Core v4.0")
 
-# --- NarrativeEngine v4.0: Initialize conversation memory ---
+# --- NarrativeEngine v4.0: Initialize conversation memory (single instance) ---
+# Use max_memory=20 for extended history support
 if not hasattr(app.state, "narrative_engine"):
-    app.state.narrative_engine = NarrativeEngine(max_memory=10)
+    app.state.narrative_engine = NarrativeEngine(max_memory=20)
 
-# --- EZA-NarrativeEngine v2.2: Initialize long-context narrative engine ---
-# Multi-turn conversation analysis engine (max 20 messages)
+# Alias for backward compatibility (narrative = narrative_engine)
 if not hasattr(app.state, "narrative"):
-    app.state.narrative = NarrativeEngine(max_memory=20)
+    app.state.narrative = app.state.narrative_engine
 
 # --- ReasoningShield v5.0: Initialize central decision layer ---
 if not hasattr(app.state, "reasoning_shield"):
@@ -257,23 +257,21 @@ async def analyze(req: AnalyzeRequest, request: Request):
     model = (req.model or "chatgpt").lower()
     mode = (req.mode or "standalone").lower()
 
-    # EZA-NarrativeEngine: Initialize narrative engine if not exists
-    if not hasattr(request.app.state, "narrative") or request.app.state.narrative is None:
-        request.app.state.narrative = NarrativeEngine(max_memory=20)
+    # EZA-NarrativeEngine: Initialize narrative engine if not exists (single instance)
+    if not hasattr(request.app.state, "narrative_engine"):
+        request.app.state.narrative_engine = NarrativeEngine(max_memory=20)
     
-    # Add user message to conversation memory
+    # Alias for backward compatibility (narrative = narrative_engine)
+    if not hasattr(request.app.state, "narrative") or request.app.state.narrative is None:
+        request.app.state.narrative = request.app.state.narrative_engine
+    
+    # Add user message to conversation memory (single instance)
     if text:
         try:
-            request.app.state.narrative.add_message("user", text)
+            request.app.state.narrative_engine.add_message("user", text)
         except Exception as e:
             # Log error but don't fail the request
             print(f"Warning: Could not add user message to narrative: {e}")
-
-    # EZA-NarrativeEngine v4.0: Legacy narrative_engine support
-    if not hasattr(request.app.state, "narrative_engine"):
-        request.app.state.narrative_engine = NarrativeEngine(max_memory=10)
-    
-    request.app.state.narrative_engine.add_message("user", text)
 
     # 1) Input analizi (niyet + risk + duygu)
     input_scores: Dict[str, Any] = analyze_input(text)
@@ -351,7 +349,7 @@ async def analyze(req: AnalyzeRequest, request: Request):
             input_scores["risk_score"] = max(current_risk, identity_risk)
     
     # EZA-NarrativeEngine v2.2: Analyze long conversation context (risk accumulation, intent drift, escalation)
-    narrative_v2_results = request.app.state.narrative.analyze_narrative(text)
+    narrative_v2_results = request.app.state.narrative_engine.analyze_narrative(text)
     
     # Add narrative v2.2 risk to input analysis
     if narrative_v2_results.get("risk_score", 0.0) > 0.3:
@@ -374,7 +372,7 @@ async def analyze(req: AnalyzeRequest, request: Request):
         input_scores["risk_score"] = max(current_risk, narrative_v2_risk)
     
     # EZA-NarrativeEngine v2.2: Add current analysis to history (AFTER analysis, BEFORE adding to report)
-    request.app.state.narrative.add(
+    request.app.state.narrative_engine.add(
         text=text,
         intent=input_scores.get("intent_engine", {}),
         identity=identity_block_results if identity_block_results and identity_block_results.get("ok", False) else {},
@@ -481,21 +479,8 @@ async def analyze(req: AnalyzeRequest, request: Request):
     # Add shield result to analysis
     input_scores["analysis"]["shield"] = shield_result
     
-    # Genel risk skorunu shield ile senkronize et
-    shield_score = shield_result.get("alignment_score", 100)
-    current_risk_score = input_scores.get("risk_score", 0.0)
-    
-    # alignment_score düşükse, risk_score'u yukarı çek
-    if shield_score <= 20:
-        input_scores["risk_score"] = max(current_risk_score, 0.9)
-        input_scores["risk_level"] = "critical"
-    elif shield_score <= 50:
-        input_scores["risk_score"] = max(current_risk_score, 0.6)
-        if input_scores.get("risk_level") not in ["critical", "high"]:
-            input_scores["risk_level"] = "high"
-    elif shield_score <= 70:
-        if input_scores.get("risk_level") not in ["critical", "high"]:
-            input_scores["risk_level"] = "medium"
+    # NOTE: Risk level override will be done AFTER EZA Score calculation
+    # to ensure EZA Score uses original risk level, not overridden one
 
     # 5) Model cevabını ve tavsiyeyi üret
     # Burada örnek olarak tek model (chatgpt) çıktısını kullanıyoruz.
@@ -506,15 +491,11 @@ async def analyze(req: AnalyzeRequest, request: Request):
     else:
         raw_answer = str(model_outputs)
 
-    # EZA-NarrativeEngine: Add assistant response to memory
+    # EZA-NarrativeEngine: Add assistant response to memory (single instance)
     if hasattr(request.app.state, "narrative_engine"):
-        request.app.state.narrative_engine.add_message("assistant", raw_answer)
-    
-    # EZA-NarrativeEngine: Add assistant response to main narrative engine
-    if hasattr(request.app.state, "narrative") and request.app.state.narrative is not None:
         try:
             if raw_answer:
-                request.app.state.narrative.add_message("assistant", raw_answer)
+                request.app.state.narrative_engine.add_message("assistant", raw_answer)
         except Exception as e:
             # Log error but don't fail the request
             print(f"Warning: Could not add assistant message to narrative: {e}")
@@ -578,9 +559,9 @@ async def analyze(req: AnalyzeRequest, request: Request):
     
     # EZA-NarrativeEngine: Analyze entire conversation (multi-turn analysis)
     narrative_results = None
-    if hasattr(request.app.state, "narrative") and request.app.state.narrative is not None:
+    if hasattr(request.app.state, "narrative_engine") and request.app.state.narrative_engine is not None:
         try:
-            narrative_results = request.app.state.narrative.analyze()  # No text parameter = analyze entire conversation
+            narrative_results = request.app.state.narrative_engine.analyze()  # No text parameter = analyze entire conversation
         except Exception as e:
             narrative_results = {
                 "ok": False,
@@ -636,255 +617,287 @@ async def analyze(req: AnalyzeRequest, request: Request):
     # EZA Level-6 Upgrade: Run new safety layers
     # Get memory from narrative engine for Level-6 modules
     narrative_memory = []
-    if hasattr(request.app.state, "narrative") and request.app.state.narrative is not None:
-        narrative_memory = getattr(request.app.state.narrative, "memory", [])
+    if hasattr(request.app.state, "narrative_engine") and request.app.state.narrative_engine is not None:
+        narrative_memory = getattr(request.app.state.narrative_engine, "memory", [])
     
     # a) Deception Engine
-    try:
-        deception = request.app.state.deception_engine.analyze(
-            text=text,
-            report=report,
-            memory=narrative_memory
-        )
-        report["deception"] = deception
-    except Exception as e:
-        print(f"Warning: DeceptionEngine analysis failed: {e}")
-        report["deception"] = {
-            "ok": False,
-            "error": str(e),
-            "score": 0.0,
-            "level": "unknown",
-            "flags": [],
-            "summary": "Deception analysis failed."
-        }
+    if run_full_analysis:
+        try:
+            deception = request.app.state.deception_engine.analyze(
+                text=text,
+                report=report,
+                memory=narrative_memory
+            )
+            report["deception"] = deception
+        except Exception as e:
+            print(f"Warning: DeceptionEngine analysis failed: {e}")
+            report["deception"] = {
+                "ok": False,
+                "error": str(e),
+                "score": 0.0,
+                "level": "unknown",
+                "flags": [],
+                "summary": "Deception analysis failed."
+            }
+    else:
+        # Fast mode: Skip detailed analysis
+        report["deception"] = {"ok": False, "summary": "Skipped in fast mode"}
     
     # b) Psychological Pressure Detector
-    try:
-        psychological_pressure = request.app.state.psych_pressure.analyze(
-            text=text,
-            memory=narrative_memory
-        )
-        report["psychological_pressure"] = psychological_pressure
-    except Exception as e:
-        print(f"Warning: PsychologicalPressureDetector analysis failed: {e}")
-        report["psychological_pressure"] = {
-            "ok": False,
-            "error": str(e),
-            "score": 0.0,
-            "level": "unknown",
-            "patterns": [],
-            "summary": "Psychological pressure analysis failed."
-        }
+    if run_full_analysis:
+        try:
+            psychological_pressure = request.app.state.psych_pressure.analyze(
+                text=text,
+                memory=narrative_memory
+            )
+            report["psychological_pressure"] = psychological_pressure
+        except Exception as e:
+            print(f"Warning: PsychologicalPressureDetector analysis failed: {e}")
+            report["psychological_pressure"] = {
+                "ok": False,
+                "error": str(e),
+                "score": 0.0,
+                "level": "unknown",
+                "patterns": [],
+                "summary": "Psychological pressure analysis failed."
+            }
+    else:
+        report["psychological_pressure"] = {"ok": False, "summary": "Skipped in fast mode"}
     
     # c) Legal Risk Engine (needs deception and psychological_pressure in report)
-    try:
-        legal_risk = request.app.state.legal_risk.analyze(report)
-        report["legal_risk"] = legal_risk
-    except Exception as e:
-        print(f"Warning: LegalRiskEngine analysis failed: {e}")
-        report["legal_risk"] = {
-            "ok": False,
-            "error": str(e),
-            "score": 0.0,
-            "level": "unknown",
-            "categories": [],
-            "summary": "Legal risk analysis failed."
-        }
+    if run_full_analysis:
+        try:
+            legal_risk = request.app.state.legal_risk.analyze(report)
+            report["legal_risk"] = legal_risk
+        except Exception as e:
+            print(f"Warning: LegalRiskEngine analysis failed: {e}")
+            report["legal_risk"] = {
+                "ok": False,
+                "error": str(e),
+                "score": 0.0,
+                "level": "unknown",
+                "categories": [],
+                "summary": "Legal risk analysis failed."
+            }
+    else:
+        report["legal_risk"] = {"ok": False, "summary": "Skipped in fast mode"}
     
     # d) Context Safety Graph
-    try:
-        context_graph = request.app.state.context_graph.build(report)
-        report["context_graph"] = context_graph
-    except Exception as e:
-        print(f"Warning: ContextSafetyGraph analysis failed: {e}")
-        report["context_graph"] = {
-            "ok": False,
-            "error": str(e),
-            "nodes": {},
-            "edges": [],
-            "summary": "Context graph building failed."
-        }
+    if run_full_analysis:
+        try:
+            context_graph = request.app.state.context_graph.build(report)
+            report["context_graph"] = context_graph
+        except Exception as e:
+            print(f"Warning: ContextSafetyGraph analysis failed: {e}")
+            report["context_graph"] = {
+                "ok": False,
+                "error": str(e),
+                "nodes": {},
+                "edges": [],
+                "summary": "Context graph building failed."
+            }
+    else:
+        report["context_graph"] = {"ok": False, "summary": "Skipped in fast mode"}
     
     # e) Behavior Correlation Model
-    try:
-        behavior_corr = request.app.state.behavior_correlation.analyze(
-            memory=narrative_memory,
-            report=report
-        )
-        report["behavior_correlation"] = behavior_corr
-    except Exception as e:
-        print(f"Warning: BehaviorCorrelationModel analysis failed: {e}")
-        report["behavior_correlation"] = {
-            "ok": False,
-            "error": str(e),
-            "trend_score": 0.0,
-            "level": "unknown",
-            "flags": [],
-            "summary": "Behavior correlation analysis failed."
-        }
+    if run_full_analysis:
+        try:
+            behavior_corr = request.app.state.behavior_correlation.analyze(
+                memory=narrative_memory,
+                report=report
+            )
+            report["behavior_correlation"] = behavior_corr
+        except Exception as e:
+            print(f"Warning: BehaviorCorrelationModel analysis failed: {e}")
+            report["behavior_correlation"] = {
+                "ok": False,
+                "error": str(e),
+                "trend_score": 0.0,
+                "level": "unknown",
+                "flags": [],
+                "summary": "Behavior correlation analysis failed."
+            }
+    else:
+        report["behavior_correlation"] = {"ok": False, "summary": "Skipped in fast mode"}
     
     # f) Ethical Gradient Engine (needs all previous Level-6 modules)
-    try:
-        ethical = request.app.state.ethical_gradient.compute(report)
-        report["ethical_gradient"] = ethical
-    except Exception as e:
-        print(f"Warning: EthicalGradientEngine computation failed: {e}")
-        report["ethical_gradient"] = {
-            "ok": False,
-            "error": str(e),
-            "ethical_score": 50.0,
-            "grade": "C",
-            "dimensions": {
-                "individual_harm": 0.0,
-                "societal_harm": 0.0,
-                "consent": 0.0,
-                "privacy": 0.0,
-                "legal": 0.0
-            },
-            "summary": "Ethical gradient computation failed."
-        }
+    if run_full_analysis:
+        try:
+            ethical = request.app.state.ethical_gradient.compute(report)
+            report["ethical_gradient"] = ethical
+        except Exception as e:
+            print(f"Warning: EthicalGradientEngine computation failed: {e}")
+            report["ethical_gradient"] = {
+                "ok": False,
+                "error": str(e),
+                "ethical_score": 50.0,
+                "grade": "C",
+                "dimensions": {
+                    "individual_harm": 0.0,
+                    "societal_harm": 0.0,
+                    "consent": 0.0,
+                    "privacy": 0.0,
+                    "legal": 0.0
+                },
+                "summary": "Ethical gradient computation failed."
+            }
+    else:
+        report["ethical_gradient"] = {"ok": False, "summary": "Skipped in fast mode"}
 
     # LEVEL 7 – Critical Bias Engine
-    try:
-        critical_bias_engine = request.app.state.critical_bias_engine
+    if run_full_analysis:
+        try:
+            critical_bias_engine = request.app.state.critical_bias_engine
 
-        # Mevcut verileri toparla
-        input_text = report.get("input", {}).get("raw_text", text)  # text değişkeni varsa kullan
-        model_outputs = report.get("model_outputs", {})
+            # Mevcut verileri toparla
+            input_text = report.get("input", {}).get("raw_text", text)  # text değişkeni varsa kullan
+            model_outputs = report.get("model_outputs", {})
 
-        intent_engine = report.get("intent_engine") or report.get("intent")
-        context_graph = report.get("context_graph")
+            intent_engine = report.get("intent_engine") or report.get("intent")
+            context_graph = report.get("context_graph")
 
-        critical_bias = critical_bias_engine.analyze(
-            input_text=input_text,
-            model_outputs=model_outputs,
-            intent_engine=intent_engine,
-            context_graph=context_graph,
-        )
-    except Exception as exc:  # güvenlik fallback
-        critical_bias = {
-            "bias_score": 0.0,
-            "level": "low",
-            "dimensions": {
-                "gender": 0.0,
-                "culture": 0.0,
-                "religion": 0.0,
-                "socioeconomic": 0.0,
-                "identity": 0.0,
-                "political": 0.0,
-            },
-            "flags": ["critical-bias-engine-error"],
-            "summary": f"CriticalBiasEngine çalışırken hata oluştu: {exc}",
-        }
+            critical_bias = critical_bias_engine.analyze(
+                input_text=input_text,
+                model_outputs=model_outputs,
+                intent_engine=intent_engine,
+                context_graph=context_graph,
+            )
+        except Exception as exc:  # güvenlik fallback
+            critical_bias = {
+                "bias_score": 0.0,
+                "level": "low",
+                "dimensions": {
+                    "gender": 0.0,
+                    "culture": 0.0,
+                    "religion": 0.0,
+                    "socioeconomic": 0.0,
+                    "identity": 0.0,
+                    "political": 0.0,
+                },
+                "flags": ["critical-bias-engine-error"],
+                "summary": f"CriticalBiasEngine çalışırken hata oluştu: {exc}",
+            }
+    else:
+        # Fast mode: Skip detailed bias analysis
+        critical_bias = {"bias_score": 0.0, "level": "low", "summary": "Skipped in fast mode"}
 
     report["critical_bias"] = critical_bias
 
     # LEVEL 8 – Moral Compass Engine
-    try:
-        moral_engine = request.app.state.moral_compass_engine
+    if run_full_analysis:
+        try:
+            moral_engine = request.app.state.moral_compass_engine
 
-        input_text = report.get("input", {}).get("raw_text", text)
-        model_outputs = report.get("model_outputs", {})
+            input_text = report.get("input", {}).get("raw_text", text)
+            model_outputs = report.get("model_outputs", {})
 
-        intent_engine = report.get("intent_engine") or report.get("intent")
-        context_graph = report.get("context_graph")
+            intent_engine = report.get("intent_engine") or report.get("intent")
+            context_graph = report.get("context_graph")
 
-        moral_compass = moral_engine.analyze(
-            input_text=input_text,
-            model_outputs=model_outputs,
-            intent_engine=intent_engine,
-            context_graph=context_graph,
-        )
-    except Exception as exc:
-        moral_compass = {
-            "score": 0.0,
-            "level": "low",
-            "dimensions": {
-                "harm_care": 0.0,
-                "fairness": 0.0,
-                "honesty": 0.0,
-                "autonomy": 0.0,
-                "respect": 0.0,
-                "cultural_sensitivity": 0.0,
-            },
-            "flags": ["moral-compass-error"],
-            "summary": f"MoralCompassEngine hatası: {exc}",
-        }
+            moral_compass = moral_engine.analyze(
+                input_text=input_text,
+                model_outputs=model_outputs,
+                intent_engine=intent_engine,
+                context_graph=context_graph,
+            )
+        except Exception as exc:
+            moral_compass = {
+                "score": 0.0,
+                "level": "low",
+                "dimensions": {
+                    "harm_care": 0.0,
+                    "fairness": 0.0,
+                    "honesty": 0.0,
+                    "autonomy": 0.0,
+                    "respect": 0.0,
+                    "cultural_sensitivity": 0.0,
+                },
+                "flags": ["moral-compass-error"],
+                "summary": f"MoralCompassEngine hatası: {exc}",
+            }
+    else:
+        moral_compass = {"score": 0.0, "level": "low", "summary": "Skipped in fast mode"}
 
     report["moral_compass"] = moral_compass
 
     # LEVEL 9 – Abuse & Coercion Engine
-    try:
-        abuse_engine = request.app.state.abuse_engine
+    if run_full_analysis:
+        try:
+            abuse_engine = request.app.state.abuse_engine
 
-        input_text = report.get("input", {}).get("raw_text", text)
-        model_outputs = report.get("model_outputs", {})
+            input_text = report.get("input", {}).get("raw_text", text)
+            model_outputs = report.get("model_outputs", {})
 
-        intent_engine = report.get("intent_engine") or report.get("intent")
-        context_graph = report.get("context_graph")
+            intent_engine = report.get("intent_engine") or report.get("intent")
+            context_graph = report.get("context_graph")
 
-        abuse = abuse_engine.analyze(
-            input_text=input_text,
-            model_outputs=model_outputs,
-            intent_engine=intent_engine,
-            context_graph=context_graph,
-        )
-    except Exception as exc:
-        abuse = {
-            "score": 0.0,
-            "level": "low",
-            "dimensions": {
-                "harassment": 0.0,
-                "threat": 0.0,
-                "coercion": 0.0,
-                "blackmail": 0.0,
-                "grooming": 0.0,
-            },
-            "flags": ["abuse-engine-error"],
-            "summary": f"AbuseEngine hatası: {exc}",
-        }
+            abuse = abuse_engine.analyze(
+                input_text=input_text,
+                model_outputs=model_outputs,
+                intent_engine=intent_engine,
+                context_graph=context_graph,
+            )
+        except Exception as exc:
+            abuse = {
+                "score": 0.0,
+                "level": "low",
+                "dimensions": {
+                    "harassment": 0.0,
+                    "threat": 0.0,
+                    "coercion": 0.0,
+                    "blackmail": 0.0,
+                    "grooming": 0.0,
+                },
+                "flags": ["abuse-engine-error"],
+                "summary": f"AbuseEngine hatası: {exc}",
+            }
+    else:
+        abuse = {"score": 0.0, "level": "low", "summary": "Skipped in fast mode"}
 
     report["abuse"] = abuse
 
     # LEVEL 10 – Memory Consistency Engine
-    try:
-        mem_engine = request.app.state.memory_consistency_engine
+    if run_full_analysis:
+        try:
+            mem_engine = request.app.state.memory_consistency_engine
 
-        # Build memory_context from narrative engine
-        memory_context = None
-        if hasattr(request.app.state, "narrative") and request.app.state.narrative is not None:
-            narrative_memory = getattr(request.app.state.narrative, "memory", [])
-            if narrative_memory:
-                past_user_messages = [m.get("text", "") for m in narrative_memory if m.get("role") == "user"]
-                past_model_messages = [m.get("text", "") for m in narrative_memory if m.get("role") == "assistant"]
-                memory_context = {
-                    "past_user_messages": past_user_messages,
-                    "past_model_messages": past_model_messages,
-                }
-        
-        # Fallback to report memory_context if available
-        if not memory_context:
-            memory_context = report.get("memory_context")
-        
-        model_outputs = report.get("model_outputs", {})
+            # Build memory_context from narrative engine
+            memory_context = None
+            if hasattr(request.app.state, "narrative_engine") and request.app.state.narrative_engine is not None:
+                narrative_memory = getattr(request.app.state.narrative_engine, "memory", [])
+                if narrative_memory:
+                    past_user_messages = [m.get("text", "") for m in narrative_memory if m.get("role") == "user"]
+                    past_model_messages = [m.get("text", "") for m in narrative_memory if m.get("role") == "assistant"]
+                    memory_context = {
+                        "past_user_messages": past_user_messages,
+                        "past_model_messages": past_model_messages,
+                    }
+            
+            # Fallback to report memory_context if available
+            if not memory_context:
+                memory_context = report.get("memory_context")
+            
+            model_outputs = report.get("model_outputs", {})
 
-        memory_consistency = mem_engine.analyze(
-            memory_context=memory_context,
-            model_outputs=model_outputs,
-        )
-    except Exception as exc:
-        memory_consistency = {
-            "score": 0.0,
-            "level": "low",
-            "dimensions": {
-                "policy_consistency": 0.0,
-                "self_contradiction": 0.0,
-                "knowledge_drift": 0.0,
-                "user_fact_inconsistency": 0.0,
-            },
-            "flags": ["memory-engine-error"],
-            "summary": f"MemoryConsistencyEngine hatası: {exc}",
-        }
+            memory_consistency = mem_engine.analyze(
+                memory_context=memory_context,
+                model_outputs=model_outputs,
+            )
+        except Exception as exc:
+            memory_consistency = {
+                "score": 0.0,
+                "level": "low",
+                "dimensions": {
+                    "policy_consistency": 0.0,
+                    "self_contradiction": 0.0,
+                    "knowledge_drift": 0.0,
+                    "user_fact_inconsistency": 0.0,
+                },
+                "flags": ["memory-engine-error"],
+                "summary": f"MemoryConsistencyEngine hatası: {exc}",
+            }
+    else:
+        memory_consistency = {"score": 0.0, "level": "low", "summary": "Skipped in fast mode"}
 
     report["memory_consistency"] = memory_consistency
 
@@ -906,6 +919,23 @@ async def analyze(req: AnalyzeRequest, request: Request):
     report["drift_matrix"] = drift
     report["eza_score"] = score
     report["final_verdict"] = final_verdict
+    
+    # EZA-ReasoningShield v5.0: Risk level override AFTER EZA Score calculation
+    # This ensures EZA Score uses original risk level, then we override for final report
+    shield_score = shield_result.get("alignment_score", 100)
+    current_risk_score = input_scores.get("risk_score", 0.0)
+    
+    # alignment_score düşükse, risk_score'u yukarı çek (report'a yaz, input_scores'a değil)
+    if shield_score <= 20:
+        report["risk_level"] = "critical"
+        report["risk_score"] = max(current_risk_score, 0.9)
+    elif shield_score <= 50:
+        if report.get("risk_level") not in ["critical", "high"]:
+            report["risk_level"] = "high"
+        report["risk_score"] = max(current_risk_score, 0.6)
+    elif shield_score <= 70:
+        if report.get("risk_level") not in ["critical", "high"]:
+            report["risk_level"] = "medium"
 
     # 5b) Generate advice with final_verdict (using new dynamic template system)
     # Pass report as separate parameter to avoid circular reference
@@ -1038,5 +1068,85 @@ async def lab_dashboard(request: Request):
             content="<h1>EZA LAB Dashboard not found</h1><p>Please ensure frontend/lab/index.html exists.</p>",
             status_code=404
         )
+
+
+# -------------------------------------------------
+# /proxy_chat – Proxy Mode Endpoint for External LLM Integration
+# -------------------------------------------------
+
+@app.post("/proxy_chat")
+async def proxy_chat(req: AnalyzeRequest, request: Request):
+    """
+    Proxy mode endpoint for external LLM integration.
+    
+    This endpoint:
+    1. Analyzes user input with EZA
+    2. Calls external LLM (OpenAI, Anthropic, etc.)
+    3. Analyzes LLM output with EZA
+    4. Returns combined response with analysis
+    """
+    text = req.text or req.query or ""
+    mode = (req.mode or "fast").lower()
+    model = (req.model or "chatgpt").lower()
+    
+    if not text:
+        return JSONResponse(
+            {"ok": False, "error": "Text is required"},
+            status_code=400
+        )
+    
+    # 1) Input EZA analizi (fast mode için basitleştirilmiş)
+    input_scores = analyze_input(text)
+    
+    # 2) External LLM çağrısı (simülasyon - gerçek API entegrasyonu için genişletilebilir)
+    # TODO: Gerçek OpenAI/Anthropic API entegrasyonu eklenebilir
+    if model == "chatgpt" or model == "openai":
+        # Simulated response for now
+        llm_output = f"[Simulated LLM Response] {text}"
+    else:
+        llm_output = f"[Simulated {model} Response] {text}"
+    
+    # 3) Output analizi (deep mode için detaylı, fast mode için basit)
+    if mode == "deep":
+        output_scores = analyze_output(llm_output, model=model, input_analysis=input_scores)
+    else:
+        # Fast mode: Basit output analizi
+        output_scores = {
+            "ok": True,
+            "model": model,
+            "output_text": llm_output,
+            "risk_flags": [],
+            "risk_score": 0.0,
+            "risk_level": "low",
+            "emotional_tone": "neutral",
+            "analysis": {
+                "quality_score": 50,
+                "helpfulness": "Fast mode analysis.",
+                "safety_issues": [],
+                "policy_violations": [],
+                "summary": "Fast mode output analysis.",
+            },
+        }
+    
+    # 4) Alignment hesaplama
+    alignment_meta = compute_alignment(
+        input_analysis=input_scores,
+        output_analysis=output_scores,
+    )
+    
+    # 5) Basit rapor oluştur
+    report = {
+        "ok": True,
+        "mode": mode,
+        "model": model,
+        "input_analysis": input_scores,
+        "output_analysis": output_scores,
+        "alignment_meta": alignment_meta,
+        "llm_output": llm_output,
+        "risk_level": input_scores.get("risk_level", "low"),
+        "risk_flags": input_scores.get("risk_flags", []),
+    }
+    
+    return JSONResponse(report)
 
 

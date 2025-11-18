@@ -141,25 +141,17 @@ class EZAScore:
         """
         Safety durumuna göre bonus/penalty hesapla.
         
+        Simplified: Use single source (reasoning_shield.final_risk_level) for consistency.
+        
         Returns:
             float: Safety bonus (+10) veya penalty (-20)
         """
-        # Safety bilgisini bul
-        safety = report.get("safety") or input_analysis.get("safety")
+        # Single source: reasoning_shield.final_risk_level
+        reasoning_shield = report.get("reasoning_shield") or {}
+        safety_level = reasoning_shield.get("final_risk_level") or reasoning_shield.get("level") or "low"
         
-        # Reasoning shield'den safety bilgisi
-        if not safety:
-            reasoning_shield = report.get("reasoning_shield") or {}
-            safety = reasoning_shield.get("level") or reasoning_shield.get("final_risk_level")
-        
-        # Alignment meta'dan safety bilgisi
-        if not safety:
-            alignment_meta = report.get("alignment_meta") or {}
-            if alignment_meta.get("label") == "Safe":
-                safety = "OK"
-        
-        # Safety OK kontrolü
-        if safety and (safety == "OK" or safety == "safe" or safety == "low" or safety == "none"):
+        # Safety OK kontrolü (low/none/safe = OK)
+        if safety_level in ["low", "none", "safe"]:
             return self.safety_bonus  # +10 bonus
         else:
             return self.safety_penalty  # -20 penalty

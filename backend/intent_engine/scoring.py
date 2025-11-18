@@ -146,6 +146,8 @@ def compute_intent_scores(text: str) -> Dict[str, float]:
         "manipulation": 0.0,
         "sensitive-data": 0.0,
         "toxicity": 0.0,
+        "abuse": 0.0,  # Abuse & harassment intent
+        "coercion": 0.0,  # Coercion & pressure intent
     }
     
     text_lower = text.lower()
@@ -297,6 +299,29 @@ def compute_intent_scores(text: str) -> Dict[str, float]:
     if any(keyword in text for keyword in TOXICITY_KEYWORDS):
         scores["toxicity"] = 0.65
     
+    # Abuse: harassment, threats, bullying patterns
+    abuse_keywords = [
+        "taciz", "taciz etmek", "rahatsız etmek", "rahatsiz etmek",
+        "zorla", "zorlamak", "zorla yaptırmak", "zorla yaptirmak",
+        "tehdit", "tehdit etmek", "korkutmak", "korkut",
+        "rahatsız", "rahatsiz", "sıkıntı", "sikinti",
+        "bullying", "mobbing", "istismar", "sömürü",
+    ]
+    if any(keyword in text_lower for keyword in abuse_keywords):
+        scores["abuse"] = 0.75
+    
+    # Coercion: psychological pressure, manipulation, forced compliance
+    coercion_keywords = [
+        "zorla", "zorlamak", "zorla yaptırmak", "zorla yaptirmak",
+        "baskı", "baski", "baskı yapmak", "baski yapmak",
+        "ikna etmek", "ikna et", "ikna etmeye çalışmak",
+        "zorunda bırakmak", "zorunda birakmak",
+        "mecbur etmek", "mecbur et", "mecbur bırakmak",
+        "coercion", "pressure", "forced", "compel",
+    ]
+    if any(keyword in text_lower for keyword in coercion_keywords):
+        scores["coercion"] = 0.70
+    
     # Information: learning purpose or information-seeking verbs
     info_action_count = action_hits.get("information", {}).get("count", 0)
     has_learning_purpose = purpose_hits.get("learning", {}).get("count", 0) > 0
@@ -305,7 +330,7 @@ def compute_intent_scores(text: str) -> Dict[str, float]:
         scores["information"] = min(0.5 + (info_action_count * 0.1), 1.0)
     
     # Default to information if no other intent detected (but keep score low)
-    max_risk_score = max([scores.get(cat, 0.0) for cat in ["illegal", "violence", "self-harm", "manipulation", "sensitive-data", "toxicity"]], default=0.0)
+    max_risk_score = max([scores.get(cat, 0.0) for cat in ["illegal", "violence", "self-harm", "manipulation", "sensitive-data", "toxicity", "abuse", "coercion"]], default=0.0)
     if max_risk_score == 0.0:
         # Set information score for benign queries
         if scores.get("information", 0.0) == 0.0:
@@ -336,9 +361,13 @@ def fuse_risk(scores: Dict[str, float]) -> Tuple[List[str], float, str]:
         risk_flags.append("sensitive-data")
     if scores.get("toxicity", 0.0) >= THRESHOLD_TOXICITY:
         risk_flags.append("toxicity")
+    if scores.get("abuse", 0.0) >= 0.6:  # Abuse threshold
+        risk_flags.append("abuse")
+    if scores.get("coercion", 0.0) >= 0.6:  # Coercion threshold
+        risk_flags.append("coercion")
     
     # Risk score = max of risk categories
-    risk_categories = ["self-harm", "violence", "illegal", "manipulation", "sensitive-data", "toxicity"]
+    risk_categories = ["self-harm", "violence", "illegal", "manipulation", "sensitive-data", "toxicity", "abuse", "coercion"]
     risk_score = max([scores.get(cat, 0.0) for cat in risk_categories], default=0.0)
     
     # Risk level
