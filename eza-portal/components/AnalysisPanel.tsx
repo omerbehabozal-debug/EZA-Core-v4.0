@@ -44,6 +44,12 @@ export default function AnalysisPanel() {
 
   const analysis = selectedMessage.analysis;
   const riskColor = RISK_COLORS[analysis.risk_level?.toLowerCase() || "none"] || RISK_COLORS.none;
+  
+  // Extract EZA Score with fallbacks
+  const ezaScore = analysis.eza_score ?? 
+                   (analysis._raw?.analysis?.eza_score?.eza_score) ??
+                   (analysis._raw?.analysis?.eza_score?.final_score ? analysis._raw.analysis.eza_score.final_score * 100 : null) ??
+                   null;
 
   return (
     <div className="w-full h-full overflow-y-auto p-6 space-y-6">
@@ -71,7 +77,7 @@ export default function AnalysisPanel() {
               strokeWidth="8"
               strokeLinecap="round"
               strokeDasharray={`${2 * Math.PI * 54}`}
-              strokeDashoffset={`${2 * Math.PI * 54 * (1 - (analysis.eza_score || 0) / 100)}`}
+              strokeDashoffset={`${2 * Math.PI * 54 * (1 - (ezaScore || 0) / 100)}`}
               style={{ transition: "stroke-dashoffset 0.5s ease" }}
             />
           </svg>
@@ -79,7 +85,7 @@ export default function AnalysisPanel() {
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
               <div className="text-3xl font-bold" style={{ color: riskColor }}>
-                {analysis.eza_score?.toFixed(0) || "—"}
+                {ezaScore !== null ? ezaScore.toFixed(0) : "—"}
               </div>
               <div className="text-xs text-neutral-400 mt-1">EZA Score</div>
             </div>
@@ -110,12 +116,18 @@ export default function AnalysisPanel() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-neutral-400 text-sm">Intent</span>
-              <span className="text-neutral-300 font-medium">{analysis.intent}</span>
+              <span className="text-neutral-300 font-medium">
+                {typeof analysis.intent === "string" 
+                  ? analysis.intent 
+                  : (analysis.intent?.level || analysis.intent?.summary || "unknown")}
+              </span>
             </div>
-            {analysis.intent_score !== undefined && (
+            {(analysis.intent_score !== undefined || (typeof analysis.intent === "object" && analysis.intent?.score !== undefined)) && (
               <div className="flex items-center justify-between">
                 <span className="text-neutral-400 text-sm">Intent Score</span>
-                <span className="text-neutral-300">{analysis.intent_score.toFixed(2)}</span>
+                <span className="text-neutral-300">
+                  {(analysis.intent_score ?? (typeof analysis.intent === "object" ? analysis.intent?.score : 0))?.toFixed(2) || "0.00"}
+                </span>
               </div>
             )}
           </div>

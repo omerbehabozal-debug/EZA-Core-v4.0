@@ -88,15 +88,15 @@ export const useChatStore = create<ChatState>((set) => ({
       auditLog: [...s.auditLog, analysis]
     })),
   reset: () =>
-    set({
+    set((state) => ({
       messages: [],
       analysis: null,
       selectedMessageIndex: null,
       selectedMessageId: null,
-      engineMode: "standalone",
-      proxySubMode: "proxy",
-      provider: "openai",
+      engineMode: state.engineMode, // Keep current mode
+      proxySubMode: state.proxySubMode, // Keep current sub mode
+      provider: state.provider, // Keep current provider
       audit: [],
       auditLog: []
-    })
+    }))
 }));

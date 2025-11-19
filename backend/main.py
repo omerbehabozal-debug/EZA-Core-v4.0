@@ -41,6 +41,7 @@ from backend.api.utils.model_runner import (
 )
 from backend.ai.knowledge_engine import KnowledgeEngine
 from backend.ai.response_composer import ResponseComposer
+from backend.api.pipeline_runner import run_pipeline
 
 from backend.api.pipeline import router as pipeline_router
 from diagnostics.eza_status import router as diagnostics_router

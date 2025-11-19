@@ -47,7 +47,8 @@ def analyze_intent(text: str, language: str = "unknown") -> Dict[str, Any]:
     intent_scores = compute_intent_scores(text_norm)
     
     # 3) Decide primary intent (with tie-breaking order)
-    # IMPORTANT: greeting and information should be checked before risk intents
+    # IMPORTANT: greeting and information should be checked FIRST (before risk intents)
+    # If information or greeting score is high, prioritize them
     intent_order = [
         "self-harm",
         "violence",
@@ -55,17 +56,35 @@ def analyze_intent(text: str, language: str = "unknown") -> Dict[str, Any]:
         "manipulation",
         "sensitive-data",
         "toxicity",
-        "greeting",  # Add greeting to intent order
-        "information",
+        "greeting",  # Safe intents
+        "information",  # Safe intents - should be prioritized if score is high
     ]
     
-    primary = "information"
-    max_score = 0.0
-    for intent in intent_order:
-        score = intent_scores.get(intent, 0.0)
-        if score > max_score:
-            max_score = score
-            primary = intent
+    # Special handling: if information score is high (>= 0.7), prioritize it over risk intents
+    if intent_scores.get("information", 0.0) >= 0.7:
+        # Information questions should not be classified as illegal/violence/etc
+        # Temporarily reduce risk intent scores if information is clearly present
+        for risk_intent in ["illegal", "violence", "self-harm", "manipulation"]:
+            if intent_scores.get(risk_intent, 0.0) < 0.8:  # Only if not extremely high
+                intent_scores[risk_intent] = intent_scores.get(risk_intent, 0.0) * 0.3  # Reduce by 70%
+    
+    # PRIORITY: Check information and greeting FIRST before risk intents
+    # If information or greeting has a high score, use it as primary
+    if intent_scores.get("information", 0.0) >= 0.5:
+        primary = "information"
+        max_score = intent_scores["information"]
+    elif intent_scores.get("greeting", 0.0) >= 0.5:
+        primary = "greeting"
+        max_score = intent_scores["greeting"]
+    else:
+        # Otherwise, find the highest scoring intent from the order
+        primary = "information"
+        max_score = 0.0
+        for intent in intent_order:
+            score = intent_scores.get(intent, 0.0)
+            if score > max_score:
+                max_score = score
+                primary = intent
     
     # 4) Decide secondary (all categories except primary with score >= 0.4)
     secondary: List[str] = []

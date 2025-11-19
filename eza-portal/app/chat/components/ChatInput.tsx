@@ -76,15 +76,27 @@ export default function ChatInput() {
       const j = await r.json();
 
       if (j.ok) {
-        // Backend response format (from pipeline_runner)
-        const backendData = j;
+        // Backend response format (from pipeline_runner or route wrapper)
+        // Some routes return { ok: true, data: {...} }, others return { ok: true, ... } directly
+        const backendData = j.data || j;
         
         // Extract analysis data for messages (both user and assistant)
+        // Handle intent: can be string or object {level, summary, score}
+        const intentValue = typeof backendData.intent === "string" 
+          ? backendData.intent 
+          : (backendData.intent?.level || backendData.intent?.summary || "information");
+        const intentScoreValue = backendData.intent_score ?? 
+                                 (typeof backendData.intent === "object" ? backendData.intent?.score : null) ?? 
+                                 0.0;
+        
         const messageAnalysis = {
-          eza_score: backendData.analysis?.eza_score?.eza_score || backendData.analysis?.eza_score?.final_score * 100,
+          eza_score: backendData.analysis?.eza_score?.eza_score ?? 
+                     (backendData.analysis?.eza_score?.final_score ? backendData.analysis.eza_score.final_score * 100 : null) ??
+                     backendData.eza_score_value ??
+                     null,
           risk_level: backendData.risk_level || "low",
-          intent: backendData.intent || "information",
-          intent_score: backendData.intent_score || 0.0,
+          intent: intentValue,
+          intent_score: intentScoreValue,
           bias: backendData.bias || "low",
           safety: backendData.safety || "low",
           rationale: backendData.analysis?.final?.explanation || backendData.analysis?.final?.reason,
@@ -99,14 +111,38 @@ export default function ChatInput() {
         // Add audit log entry for user message
         useChatStore.getState().addAuditLogEntry(messageAnalysis);
         
-        const assistantText = backendData.text || "EZA bir yanıt üretti.";
+        // Get assistant text - check multiple possible fields
+        // Note: proxy_chat/route.ts returns llm_output, not text
+        const assistantText = backendData.llm_output || 
+                             backendData.text || 
+                             backendData.output || 
+                             backendData.cleaned_output || 
+                             "EZA bir yanıt üretti.";
+        
+        // Check if it's an LLM error and show user-friendly message
+        const displayText = assistantText.includes("[LLM Error") 
+          ? "⚠️ LLM çağrısı başarısız oldu. Lütfen birkaç dakika bekleyip tekrar deneyin veya API key'inizi kontrol edin."
+          : assistantText;
+        
+        // Extract output analysis for assistant message (if available)
+        const assistantAnalysis = backendData.output_analysis ? {
+          eza_score: backendData.output_analysis.eza_score ?? null,
+          risk_level: backendData.output_analysis.risk_level || "low",
+          intent: backendData.output_analysis.intent || "information",
+          intent_score: 0.0,
+          bias: "low",
+          safety: backendData.output_analysis.risk_level || "low",
+          rationale: backendData.analysis?.final?.explanation || backendData.analysis?.final?.reason,
+          flags: backendData.output_analysis.risk_flags || []
+        } : messageAnalysis;  // Fallback to input analysis if output analysis not available
+        
         const assistantMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         addMessage({ 
           id: assistantMessageId,
           role: "assistant", 
-          text: assistantText,
+          text: displayText,
           timestamp: Date.now(),
-          analysis: messageAnalysis
+          analysis: assistantAnalysis
         });
         
         // Full analysis for right panel

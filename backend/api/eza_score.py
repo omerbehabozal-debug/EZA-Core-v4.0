@@ -21,8 +21,8 @@ class EZAScore:
             "manipulation": 25, # max 25 puan
             "sensitive-data": 10, # max 10 puan
             "toxicity": 30,     # max 30 puan
-            "information": 100, # max 100 puan
-            "greeting": 100,    # max 100 puan
+            "information": 95,  # max 95 puan (slightly lower than greeting)
+            "greeting": 100,    # max 100 puan (highest - pure safe interaction)
         }
         
         # Risk level ağırlıkları (max puanlar)

@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       mode,
       provider,
+      text: backendData.text || backendData.analysis?.output?.output_text || "", // Add text field for compatibility
       llm_output: backendData.text || backendData.analysis?.output?.output_text || "",
       input_analysis: backendData.analysis?.input || input_analysis,
       output_analysis: backendData.analysis?.output || null,

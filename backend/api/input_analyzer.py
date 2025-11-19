@@ -118,7 +118,12 @@ def calculate_intent_scores(text: str) -> Tuple[Dict[str, float], Dict[str, List
         "neden", "niçin", "why", "why does",
         "açıkla", "acikla", "explain", "tell me",
         "bilgi ver", "bilgi", "information", "info",
-        "bana anlat", "bana açıkla", "bana bilgi"
+        "bana anlat", "bana açıkla", "bana bilgi",
+        "kaç", "kac", "how many", "how much", "ne kadar",
+        "nüfusu", "nufusu", "nüfus", "nufus", "population",
+        "nerede", "where", "ne zaman", "when", "kim", "who",
+        "hangileri", "hangi", "which", "which ones", "list", "liste",
+        "en hızlı", "en iyi", "en çok", "fastest", "best", "most"
     ]
     
     # Check if text contains information patterns (higher priority)

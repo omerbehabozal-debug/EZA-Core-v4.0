@@ -160,11 +160,27 @@ def compute_intent_scores(text: str) -> Dict[str, float]:
         "neden", "niçin", "why", "why does",
         "açıkla", "acikla", "explain", "tell me",
         "bilgi ver", "bilgi", "information", "info",
-        "bana anlat", "bana açıkla", "bana bilgi"
+        "bana anlat", "bana açıkla", "bana bilgi",
+        "kaç", "kac", "how many", "how much", "ne kadar",
+        "nüfusu", "nufusu", "nüfus", "nufus", "population",
+        "nerede", "where", "ne zaman", "when", "kim", "who",
+        "hangileri", "hangi", "which", "which ones", "list", "liste",
+        "en hızlı", "en iyi", "en çok", "fastest", "best", "most"
     ]
     
     # Check if text contains information patterns (higher priority)
-    has_information_pattern = any(pattern in text_lower for pattern in information_patterns)
+    # Normalize text for better matching (handle Turkish characters)
+    import unicodedata
+    text_normalized = unicodedata.normalize('NFKD', text_lower)
+    text_normalized = ''.join(c for c in text_normalized if not unicodedata.combining(c))
+    
+    has_information_pattern = False
+    for pattern in information_patterns:
+        pattern_normalized = unicodedata.normalize('NFKD', pattern.lower())
+        pattern_normalized = ''.join(c for c in pattern_normalized if not unicodedata.combining(c))
+        if pattern_normalized in text_normalized or pattern in text_lower:
+            has_information_pattern = True
+            break
     
     if has_information_pattern:
         scores["information"] = 0.9  # High priority for information questions

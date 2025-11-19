@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       mode: backendData.mode || "proxy_fast",
       text: backendData.text || "",
+      llm_output: backendData.llm_output || backendData.text || "", // Add llm_output for compatibility
       analysis: backendData.analysis || {},
       risk_level: backendData.risk_level || "low",
       intent: backendData.intent || "information",
@@ -39,6 +40,8 @@ export async function POST(req: NextRequest) {
       bias: backendData.bias || "low",
       safety: backendData.safety || "low",
       eza_score: backendData.analysis?.eza_score?.eza_score || null,
+      eza_score_value: backendData.analysis?.eza_score?.eza_score || null,
+      output_analysis: backendData.output_analysis || null, // Add output analysis for assistant message
       _raw: backendData
     };
 
