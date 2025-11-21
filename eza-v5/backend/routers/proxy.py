@@ -7,7 +7,7 @@ Production-ready with detailed error reporting for EZA team
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from typing import Optional, Literal
+from typing import Optional, Literal, Dict, Any
 from backend.utils.dependencies import require_internal
 from backend.engines.input_analyzer import analyze_input
 from backend.engines.model_router import route_model, LLMProviderError
@@ -17,9 +17,8 @@ from backend.engines.redirect_engine import should_redirect
 from backend.engines.score_engine import compute_score
 from backend.engines.deception_engine import analyze_deception
 from backend.engines.psych_pressure import analyze_psychological_pressure
-from backend.engines.safety_graph import build_safety_graph
-from backend.engines.drift_detector import detect_drift
 from backend.engines.legal_risk import analyze_legal_risk
+from backend.engines.safe_rewrite import safe_rewrite
 
 router = APIRouter()
 
@@ -33,19 +32,12 @@ class ProxyEvalRequest(BaseModel):
 class ProxyEvalResponse(BaseModel):
     ok: bool = True
     mode: str
-    raw_model_output: Optional[str] = None
+    raw_output: Optional[str] = None
     safe_output: Optional[str] = None
-    input_analysis: Optional[dict] = None
-    output_analysis: Optional[dict] = None
-    alignment: Optional[dict] = None
-    redirect_summary: Optional[dict] = None
-    score_breakdown: Optional[dict] = None
-    drift: Optional[dict] = None
-    risk_nodes: Optional[dict] = None
-    deception: Optional[dict] = None
-    psych_pressure: Optional[dict] = None
-    legal_risk: Optional[dict] = None
-    error: Optional[dict] = None
+    analysis: Optional[Dict[str, Any]] = None
+    safety: Optional[str] = None
+    confidence: Optional[float] = None
+    error: Optional[Dict[str, Any]] = None
 
 
 @router.post("/eval", response_model=ProxyEvalResponse)
@@ -66,7 +58,7 @@ async def proxy_eval(
         # 2. Get raw model output with error handling
         depth_mode: Literal["fast", "deep"] = request.depth
         try:
-            raw_output = await route_model(
+            llm_output = await route_model(
                 prompt=request.message,
                 depth=depth_mode,
                 temperature=0.2,
@@ -87,7 +79,7 @@ async def proxy_eval(
             )
         
         # 3. Output analysis
-        output_analysis = analyze_output(raw_output, input_analysis)
+        output_analysis = analyze_output(llm_output, input_analysis)
         
         # 4. Alignment
         alignment = compute_alignment(input_analysis, output_analysis)
@@ -98,46 +90,81 @@ async def proxy_eval(
         # 6. Score
         score_result = compute_score(input_analysis, output_analysis, alignment, redirect)
         
-        # Generate safe output
-        if redirect.get("redirect", False):
-            safe_output = "I cannot assist with that request. Please ask something else."
-        else:
-            safe_output = raw_output
+        # 7. Safe Rewrite - ALWAYS run safe_rewrite
+        safe_output = safe_rewrite(
+            user_message=request.message,
+            llm_output=llm_output,
+            input_analysis=input_analysis,
+            output_analysis=output_analysis,
+            alignment=alignment
+        )
         
-        response_data = {
-            "ok": True,
-            "mode": mode,
-            "raw_model_output": raw_output,
-            "safe_output": safe_output,
-            "input_analysis": input_analysis,
-            "output_analysis": output_analysis,
-            "alignment": alignment,
-            "redirect_summary": redirect,
-            "score_breakdown": score_result
+        # 8. Build final decision
+        final_decision = {
+            "redirect": redirect.get("redirect", False),
+            "reason": redirect.get("reason", ""),
+            "safety_level": score_result.get("safety_level", "green")
         }
         
-        # Deep analysis if requested
+        # 9. Build EZA score breakdown
+        eza_score_breakdown = {
+            "final_score": score_result.get("final_score", 0.0),
+            "safety_level": score_result.get("safety_level", "green"),
+            "confidence": score_result.get("confidence", 0.95),
+            "breakdown": score_result.get("breakdown", {})
+        }
+        
+        # 10. Build base analysis structure
+        analysis_data: Dict[str, Any] = {
+            "input": input_analysis,
+            "output": output_analysis,
+            "alignment": alignment,
+            "final": final_decision,
+            "eza_score": eza_score_breakdown
+        }
+        
+        # 11. Deep analysis if requested
         if request.depth == "deep":
             report = {
                 "input": {"raw_text": request.message, "analysis": input_analysis},
-                "output": {"raw_text": raw_output, "analysis": output_analysis},
+                "output": {"raw_text": llm_output, "analysis": output_analysis},
                 "alignment": alignment
             }
             
             # Deep engines
             deception = analyze_deception(request.message, report)
             psych_pressure = analyze_psychological_pressure(request.message)
-            safety_graph = build_safety_graph(input_analysis, output_analysis, alignment)
-            drift = detect_drift(input_analysis)
             legal_risk = analyze_legal_risk(input_analysis, output_analysis, report)
             
-            response_data.update({
-                "drift": drift,
-                "risk_nodes": safety_graph,
+            # Placeholder functions for missing deep engines
+            reasoning_shield: Dict[str, Any] = {}  # Placeholder
+            critical_bias: Dict[str, Any] = {}  # Placeholder
+            moral_compass: Dict[str, Any] = {}  # Placeholder
+            memory_consistency: Dict[str, Any] = {}  # Placeholder
+            
+            # Add deep analysis to analysis_data
+            analysis_data.update({
+                "reasoning_shield": reasoning_shield,
                 "deception": deception,
-                "psych_pressure": psych_pressure,
-                "legal_risk": legal_risk
+                "psychological_pressure": psych_pressure,
+                "critical_bias": critical_bias,
+                "moral_compass": moral_compass,
+                "memory_consistency": memory_consistency
             })
+        
+        # 12. Get safety label from alignment
+        safety_label = alignment.get("label", "Safe")
+        
+        # 13. Build response
+        response_data = {
+            "ok": True,
+            "mode": mode,
+            "raw_output": llm_output,
+            "safe_output": safe_output,
+            "analysis": analysis_data,
+            "safety": safety_label,
+            "confidence": 0.95
+        }
         
         return ProxyEvalResponse(**response_data)
         

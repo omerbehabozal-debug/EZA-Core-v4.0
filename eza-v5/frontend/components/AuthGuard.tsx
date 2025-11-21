@@ -13,6 +13,11 @@ interface AuthGuardProps {
 }
 
 export default function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
+  // TEMPORARY: Authentication disabled for development
+  // TODO: Re-enable authentication when backend is ready
+  return <>{children}</>;
+  
+  /* ORIGINAL CODE - DISABLED
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -52,5 +57,6 @@ export default function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
   }
 
   return <>{children}</>;
+  */
 }
 

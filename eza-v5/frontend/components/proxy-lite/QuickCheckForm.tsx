@@ -16,8 +16,16 @@ export default function QuickCheckForm({ onSubmit, isLoading }: QuickCheckFormPr
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    console.log('QuickCheckForm: Form submitted', { message, outputText, isLoading });
     if (message.trim() && outputText.trim() && !isLoading) {
+      console.log('QuickCheckForm: Calling onSubmit');
       onSubmit(message.trim(), outputText.trim());
+    } else {
+      console.log('QuickCheckForm: Form validation failed', {
+        hasMessage: !!message.trim(),
+        hasOutputText: !!outputText.trim(),
+        isLoading
+      });
     }
   };
 

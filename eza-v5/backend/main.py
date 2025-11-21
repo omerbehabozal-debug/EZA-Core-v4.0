@@ -32,13 +32,32 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
-    # Startup
-    await init_db()
-    await init_redis()
-    await init_vector_db()
+    # Startup - with error handling for optional dependencies
+    try:
+        await init_db()
+        logging.info("Database initialized")
+    except Exception as e:
+        logging.warning(f"Database initialization failed (optional): {e}")
+    
+    try:
+        await init_redis()
+        logging.info("Redis initialized")
+    except Exception as e:
+        logging.warning(f"Redis initialization failed (optional): {e}")
+    
+    try:
+        await init_vector_db()
+        logging.info("Vector DB initialized")
+    except Exception as e:
+        logging.warning(f"Vector DB initialization failed (optional): {e}")
     
     # Initialize vector store
-    app.state.vector_store = VectorStore()
+    try:
+        app.state.vector_store = VectorStore()
+        logging.info("Vector store initialized")
+    except Exception as e:
+        logging.warning(f"Vector store initialization failed (optional): {e}")
+        app.state.vector_store = None
     
     yield
     

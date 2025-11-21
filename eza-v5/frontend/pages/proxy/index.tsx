@@ -62,7 +62,7 @@ export default function ProxyPage() {
           <div className="space-y-6">
             {/* Output Compare - Full Width */}
             <OutputCompare
-              rawOutput={response.raw_model_output}
+              rawOutput={response.raw_output}
               safeOutput={response.safe_output}
             />
 
@@ -71,32 +71,32 @@ export default function ProxyPage() {
               {/* Left Column */}
               <div className="space-y-6">
                 <RiskSummary
-                  inputAnalysis={response.input_analysis}
-                  outputAnalysis={response.output_analysis}
-                  alignment={response.alignment}
-                  scoreBreakdown={response.score_breakdown}
+                  inputAnalysis={response.analysis?.input}
+                  outputAnalysis={response.analysis?.output}
+                  alignment={response.analysis?.alignment}
+                  scoreBreakdown={response.analysis?.eza_score}
                 />
                 <ScoreCards
-                  scoreBreakdown={response.score_breakdown}
-                  alignment={response.alignment}
-                  deception={response.deception}
-                  psychPressure={response.psych_pressure}
+                  scoreBreakdown={response.analysis?.eza_score}
+                  alignment={response.analysis?.alignment}
+                  deception={response.analysis?.deception}
+                  psychPressure={response.analysis?.psychological_pressure}
                 />
               </div>
 
               {/* Right Column */}
               <div className="space-y-6">
                 <RiskHeatmap
-                  inputAnalysis={response.input_analysis}
-                  outputAnalysis={response.output_analysis}
-                  deception={response.deception}
-                  psychPressure={response.psych_pressure}
-                  legalRisk={response.legal_risk}
+                  inputAnalysis={response.analysis?.input}
+                  outputAnalysis={response.analysis?.output}
+                  deception={response.analysis?.deception}
+                  psychPressure={response.analysis?.psychological_pressure}
+                  legalRisk={response.analysis?.legal_risk}
                 />
                 <AlignmentGraph
-                  alignment={response.alignment}
-                  scoreBreakdown={response.score_breakdown}
-                  deception={response.deception}
+                  alignment={response.analysis?.alignment}
+                  scoreBreakdown={response.analysis?.eza_score}
+                  deception={response.analysis?.deception}
                 />
               </div>
             </div>
@@ -104,9 +104,9 @@ export default function ProxyPage() {
             {/* Engine Tabs - Full Width */}
             {mode === 'deep' && (
               <EngineTabs
-                deception={response.deception}
-                psychPressure={response.psych_pressure}
-                legalRisk={response.legal_risk}
+                deception={response.analysis?.deception}
+                psychPressure={response.analysis?.psychological_pressure}
+                legalRisk={response.analysis?.legal_risk}
                 rawResponse={response}
               />
             )}
