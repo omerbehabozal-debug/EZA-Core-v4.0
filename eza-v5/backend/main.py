@@ -17,9 +17,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from backend.routers import auth, standalone, proxy, proxy_lite, admin, media, autonomy
+from backend.routers import (
+    auth, standalone, proxy, proxy_lite, admin, media, autonomy,
+    institution, gateway
+)
 from backend.core.utils.dependencies import init_db, init_redis, init_vector_db
 from backend.learning.vector_store import VectorStore
+from backend.config import get_settings
 
 # Configure logging
 logging.basicConfig(
@@ -65,10 +69,12 @@ async def lifespan(app: FastAPI):
     # Cleanup if needed
 
 
+settings = get_settings()
+
 app = FastAPI(
-    title="EZA v5 - Ethical Zekâ Altyapısı",
-    description="Global ethical AI decision routing infrastructure",
-    version="5.0.0",
+    title=settings.PROJECT_NAME,
+    description="Global ethical AI decision routing infrastructure - Enterprise Edition",
+    version="6.0.0",
     lifespan=lifespan
 )
 
@@ -89,20 +95,29 @@ app.include_router(proxy_lite.router, prefix="/api/proxy-lite", tags=["Proxy-Lit
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(media.router, prefix="/api/media", tags=["Media"])
 app.include_router(autonomy.router, prefix="/api/autonomy", tags=["Autonomy"])
+app.include_router(institution.router, prefix="/api/institution", tags=["Institution"])
+app.include_router(gateway.router, prefix="/api/gateway", tags=["Gateway"])
 
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "ok", "version": "5.0.0"}
+    return {"status": "ok", "version": "6.0.0", "env": settings.ENV}
 
 
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
-        "name": "EZA v5",
-        "description": "Ethical Zekâ Altyapısı",
+        "name": settings.PROJECT_NAME,
+        "description": "Ethical Zekâ Altyapısı - Enterprise Edition",
         "modes": ["standalone", "proxy", "proxy-lite"],
-        "version": "5.0.0"
+        "version": "6.0.0",
+        "features": [
+            "multi-tenant",
+            "ai-gateway",
+            "regulation-packs",
+            "telemetry",
+            "audit-logging"
+        ]
     }

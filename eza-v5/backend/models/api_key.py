@@ -17,12 +17,16 @@ class APIKey(Base):
     name = Column(String, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     institution_id = Column(Integer, ForeignKey("institutions.id"), nullable=True)
+    application_id = Column(Integer, ForeignKey("applications.id"), nullable=True)
+    scopes = Column(String, nullable=True)  # JSON array of scopes
     is_active = Column(Boolean, default=True)
     last_used_at = Column(DateTime(timezone=True), nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
     user = relationship("User", back_populates="api_keys")
     institution = relationship("Institution", back_populates="api_keys")
+    application = relationship("Application", back_populates="api_keys")
 

@@ -46,6 +46,9 @@ from typing import Literal, Optional, Dict, Any
 import httpx
 
 from backend.core.utils.telemetry import log_llm_call
+from backend.config import get_settings
+from backend.gateway.router_adapter import call_llm_provider as gateway_call_llm
+from backend.gateway.error_mapping import LLMProviderError as GatewayLLMProviderError
 
 
 # ---------------------------------------------------------------------------
@@ -313,20 +316,23 @@ async def route_model(
     temperature: float = 0.2,
     max_tokens: int = 512,
     mode: str = "standalone",
+    use_gateway: bool = True,  # V6: Use gateway by default
 ) -> str:
     """
-    EZA v5 için merkezi model router.
+    EZA v6 için merkezi model router.
 
-    Şu anki AŞAMA 1 davranışı:
-      - Sadece LLM_PROVIDER == "openai" desteklenir.
+    V6 davranışı:
+      - Gateway adapter kullanarak multi-provider desteği (openai, anthropic, local)
+      - Fallback to legacy implementation if gateway fails
       - depth parametresi ileride multi-LLM / deep analizler için kullanılmak üzere
         interface'te tutulur ama davranış şu an değişmez.
 
     Parametreler:
       prompt:   LLM'e gönderilecek metin (Standalone / Proxy pipeline oluşturur)
       depth:    "fast" | "deep" (şimdilik tek davranış, ileride genişletilecek)
-      temperature, max_tokens: OpenAI ayarları
+      temperature, max_tokens: LLM ayarları
       mode:     Pipeline mode for telemetry ("standalone", "proxy_fast", "proxy_deep")
+      use_gateway: Use V6 gateway adapter (default: True)
 
     Döner:
       raw_model_output: str (ham LLM cevabı – üst katmanlar bunu analiz edip
@@ -336,7 +342,56 @@ async def route_model(
         LLMProviderError: For provider-specific errors
     """
     provider = LLM_PROVIDER
+    
+    # V6: Try gateway first if enabled
+    if use_gateway:
+        t0 = time.perf_counter()
+        try:
+            settings = get_settings()
+            gateway_provider = provider if provider in ["openai", "anthropic", "local"] else "openai"
+            
+            output = await gateway_call_llm(
+                provider_name=gateway_provider,
+                prompt=prompt,
+                settings=settings,
+                model=LLM_MODEL if provider == "openai" else None,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            duration_ms = (time.perf_counter() - t0) * 1000
+            
+            # Log successful call
+            log_llm_call(
+                provider=gateway_provider,
+                model=LLM_MODEL,
+                duration_ms=duration_ms,
+                ok=True,
+                error=None,
+                mode=mode
+            )
+            
+            return output
+        except GatewayLLMProviderError as e:
+            # Map gateway error to our LLMProviderError
+            duration_ms = (time.perf_counter() - t0) * 1000
+            log_llm_call(
+                provider=gateway_provider,
+                model=LLM_MODEL,
+                duration_ms=duration_ms,
+                ok=False,
+                error=str(e),
+                mode=mode
+            )
+            raise LLMProviderError(
+                provider=e.provider,
+                message=e.message,
+                is_retryable=e.status_code is None or e.status_code >= 500
+            )
+        except Exception as e:
+            # Fallback to legacy implementation on any error
+            pass  # Continue to legacy code below
 
+    # Legacy implementation (fallback or if use_gateway=False)
     if provider == "openai":
         # İleride depth == "deep" için farklı parametreler (daha yüksek max_tokens,
         # farklı model vs.) kullanmak mümkün.

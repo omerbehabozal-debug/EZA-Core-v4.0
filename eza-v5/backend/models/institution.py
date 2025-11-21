@@ -19,7 +19,10 @@ class Institution(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
+    code = Column(String, unique=True, nullable=True, index=True)  # Institution code
+    
     # Relationships
     users = relationship("User", back_populates="institution")
     api_keys = relationship("APIKey", back_populates="institution")
+    applications = relationship("Application", back_populates="institution")
 
