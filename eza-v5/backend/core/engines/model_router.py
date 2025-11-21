@@ -68,9 +68,12 @@ class LLMProviderError(Exception):
 # ENV CONFIG
 # ---------------------------------------------------------------------------
 
-LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai").lower()
-LLM_API_KEY: Optional[str] = os.getenv("LLM_API_KEY")
-LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
+# Get settings instance for environment variables
+_settings = get_settings()
+
+LLM_PROVIDER: str = _settings.DEFAULT_LLM_PROVIDER.lower()
+LLM_API_KEY: Optional[str] = _settings.OPENAI_API_KEY  # Use OPENAI_API_KEY from Settings
+LLM_MODEL: str = _settings.LLM_MODEL  # Use LLM_MODEL from Settings
 
 # OpenAI chat completions endpoint (OpenAI'nin yeni API adresine göre güncellenebilir)
 OPENAI_BASE_URL = "https://api.openai.com/v1/chat/completions"
@@ -104,7 +107,7 @@ async def _call_openai_chat(
     if not LLM_API_KEY:
         raise LLMProviderError(
             provider="openai",
-            message="LLM_API_KEY environment variable is not set.",
+            message="OPENAI_API_KEY not configured in .env file or environment variables.",
             is_retryable=False
         )
 

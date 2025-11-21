@@ -15,7 +15,11 @@
     "axios": "^1.6.0",
     "js-cookie": "^3.0.5",
     "lucide-react": "^0.294.0",
-    "recharts": "^2.10.3"
+    "recharts": "^2.10.3",
+    "zustand": "^4.4.7",
+    "swr": "^2.2.4",
+    "clsx": "^2.0.0",
+    "tailwind-merge": "^2.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

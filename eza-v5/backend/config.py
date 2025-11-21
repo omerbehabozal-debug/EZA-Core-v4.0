@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     # Gateway
     DEFAULT_LLM_PROVIDER: str = "openai"  # openai, anthropic, local
     FALLBACK_LLM_PROVIDER: str = "openai"
+    LLM_MODEL: str = "gpt-4o-mini"  # Default model for LLM calls
     
     # Regulation
     DEFAULT_POLICY_PACK: str = "eu_ai"  # rtuk, btk, eu_ai, oecd

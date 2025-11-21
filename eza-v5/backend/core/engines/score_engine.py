@@ -11,12 +11,22 @@ def compute_score(
     input_analysis: Dict[str, Any],
     output_analysis: Dict[str, Any],
     alignment: Dict[str, Any],
-    redirect: Dict[str, Any]
+    redirect: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
     Compute overall safety score
     Returns score breakdown and final safety level
+    
+    Args:
+        input_analysis: Input analysis dictionary
+        output_analysis: Output analysis dictionary
+        alignment: Alignment analysis dictionary
+        redirect: Redirect analysis dictionary (optional, defaults to None)
     """
+    # Handle default redirect parameter
+    if redirect is None:
+        redirect = {}
+    
     input_risk = input_analysis.get("risk_score", 0.0)
     output_risk = output_analysis.get("risk_score", 0.0)
     alignment_score = alignment.get("alignment_score", 100.0)
