@@ -24,7 +24,7 @@ class Pattern(Base):
     eza_score = Column(Float, nullable=True)
     features = Column(JSON, nullable=True)  # Extracted features
     tags = Column(JSON, nullable=True)  # Tags for categorization
-    metadata = Column(JSON, nullable=True)
+    meta_data = Column("metadata", JSON, nullable=True)  # Renamed to avoid conflict
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -36,7 +36,7 @@ async def store_pattern(
     eza_score: Optional[float] = None,
     features: Optional[Dict[str, Any]] = None,
     tags: Optional[List[str]] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    meta_data: Optional[Dict[str, Any]] = None,
 ) -> Pattern:
     """Store a pattern"""
     try:
@@ -47,7 +47,7 @@ async def store_pattern(
             eza_score=eza_score,
             features=features,
             tags=tags or [],
-            metadata=metadata
+            meta_data=meta_data
         )
         db.add(pattern)
         await db.commit()

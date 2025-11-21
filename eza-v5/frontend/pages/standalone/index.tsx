@@ -8,7 +8,7 @@ import TopBar from '@/components/standalone/TopBar';
 import MessageList from '@/components/standalone/MessageList';
 import InputBar from '@/components/standalone/InputBar';
 import SettingsModal from '@/components/standalone/SettingsModal';
-import apiClient from '@/lib/api';
+import { askStandalone } from '@/api/standalone';
 
 interface Message {
   id: string;
@@ -37,16 +37,14 @@ export default function StandalonePage() {
     setIsLoading(true);
 
     try {
-      const response = await apiClient.post('/api/standalone/standalone_chat', {
-        text,
-      });
+      const response = await askStandalone(text);
 
       const ezaMessage: Message = {
         id: `eza-${Date.now()}`,
-        text: response.data.answer,
+        text: response.answer,
         isUser: false,
-        safety: response.data.safety,
-        confidence: response.data.confidence,
+        safety: response.safety,
+        confidence: response.confidence,
         timestamp: new Date(),
       };
 
@@ -57,7 +55,7 @@ export default function StandalonePage() {
       // Show error message to user
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
-        text: 'Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.',
+        text: error.message || 'Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.',
         isUser: false,
         safety: 'Warning',
         timestamp: new Date(),

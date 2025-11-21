@@ -28,7 +28,7 @@ class AuditLog(Base):
     eza_score = Column(Float, nullable=True)
     action_taken = Column(String, nullable=True)  # "allowed", "blocked", "rewritten"
     policy_pack = Column(String, nullable=True)
-    metadata = Column(JSON, nullable=True)
+    meta_data = Column("metadata", JSON, nullable=True)  # Renamed to avoid conflict with Base.metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -43,7 +43,7 @@ async def log_audit_event(
     eza_score: Optional[float] = None,
     action_taken: Optional[str] = None,
     policy_pack: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    meta_data: Optional[Dict[str, Any]] = None,
 ):
     """Log audit event to database"""
     try:
@@ -57,7 +57,7 @@ async def log_audit_event(
             eza_score=eza_score,
             action_taken=action_taken,
             policy_pack=policy_pack,
-            metadata=metadata
+            meta_data=meta_data
         )
         db.add(audit_log)
         await db.commit()

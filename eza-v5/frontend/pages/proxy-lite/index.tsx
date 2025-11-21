@@ -9,7 +9,7 @@ import QuickCheckForm from '@/components/proxy-lite/QuickCheckForm';
 import RiskResultCard from '@/components/proxy-lite/RiskResultCard';
 import RecommendationCard from '@/components/proxy-lite/RecommendationCard';
 import RiskDistributionChart from '@/components/proxy-lite/RiskDistributionChart';
-import apiClient from '@/lib/api';
+import { analyzeProxyLite } from '@/api/proxy_lite';
 
 export default function ProxyLitePage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -17,41 +17,16 @@ export default function ProxyLitePage() {
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (message: string, outputText: string) => {
-    console.log('Proxy-Lite: handleSubmit called', { message, outputText });
     setIsLoading(true);
     setError(null);
     setResult(null);
 
     try {
-      console.log('Proxy-Lite: Making API call to /api/proxy-lite/report');
-      const res = await apiClient.post('/api/proxy-lite/report', {
-        message,
-        output_text: outputText,
-      });
-
-      console.log('Proxy-Lite: API response received', res.data);
-      setResult(res.data);
+      const res = await analyzeProxyLite(message, outputText);
+      setResult(res);
     } catch (err: any) {
       console.error('Proxy-Lite: API error', err);
-      console.error('Proxy-Lite: Error response', err.response);
-      console.error('Proxy-Lite: Error data', err.response?.data);
-      
-      let errorMessage = 'Teknik bir sorun oluştu, lütfen tekrar deneyin.';
-      
-      if (err.response) {
-        // Server responded with error
-        errorMessage = err.response.data?.detail || 
-                      err.response.data?.message || 
-                      `Sunucu hatası: ${err.response.status} ${err.response.statusText}`;
-      } else if (err.request) {
-        // Request made but no response
-        errorMessage = 'Sunucuya bağlanılamadı. Backend çalışıyor mu kontrol edin.';
-      } else {
-        // Error in request setup
-        errorMessage = err.message || 'İstek hazırlanırken hata oluştu.';
-      }
-      
-      console.error('Proxy-Lite: Final error message', errorMessage);
+      const errorMessage = err.message || 'Teknik bir sorun oluştu, lütfen tekrar deneyin.';
       setError(errorMessage);
     } finally {
       setIsLoading(false);

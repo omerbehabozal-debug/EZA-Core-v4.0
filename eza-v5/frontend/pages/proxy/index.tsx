@@ -12,7 +12,7 @@ import ScoreCards from '@/components/proxy/ScoreCards';
 import RiskHeatmap from '@/components/proxy/RiskHeatmap';
 import AlignmentGraph from '@/components/proxy/AlignmentGraph';
 import EngineTabs from '@/components/proxy/EngineTabs';
-import apiClient from '@/lib/api';
+import { evaluateProxy } from '@/api/proxy';
 
 export default function ProxyPage() {
   const [mode, setMode] = useState<'fast' | 'deep'>('fast');
@@ -26,19 +26,15 @@ export default function ProxyPage() {
     setResponse(null);
 
     try {
-      const res = await apiClient.post('/api/proxy/eval', {
-        message,
-        model,
-        depth,
-      });
+      const res = await evaluateProxy(message, model, depth);
 
-      if (res.data.ok === false) {
-        setError(res.data.error?.message || 'Bir hata oluştu');
+      if (res.ok === false) {
+        setError(res.error?.message || res.error?.detail || 'Bir hata oluştu');
       } else {
-        setResponse(res.data);
+        setResponse(res);
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Teknik bir sorun oluştu, lütfen tekrar deneyin.');
+      setError(err.message || 'Teknik bir sorun oluştu, lütfen tekrar deneyin.');
     } finally {
       setIsLoading(false);
     }
