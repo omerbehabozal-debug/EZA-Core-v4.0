@@ -4,67 +4,100 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/Card';
 import { cn } from '@/lib/utils';
+import type { RiskMatrixResponse } from '@/mock/regulator';
 
 interface RiskMatrixProps {
-  data: Array<{ x: number; y: number; value: number; label: string }>;
+  data: RiskMatrixResponse;
   tenantId?: string;
 }
 
 export default function RiskMatrix({ data, tenantId = 'rtuk' }: RiskMatrixProps) {
-  // Tenant-specific tooltip labels
-  const getTenantLabel = (x: number, y: number, value: number, defaultLabel: string) => {
+  const getTenantLabel = (severity: string, likelihood: string, count: number) => {
     if (tenantId === 'rtuk') {
-      const labels = ['Çocuk İçeriği', 'Aile İçeriği', 'Şiddet İçeriği'];
-      return `${labels[x] || 'Risk'}: ${Math.round(value * 100)}%`;
+      const severityLabels: Record<string, string> = {
+        low: 'Çocuk İçeriği',
+        medium: 'Aile İçeriği',
+        high: 'Şiddet İçeriği',
+      };
+      return `${severityLabels[severity] || severity}: ${count} vaka`;
     }
     if (tenantId === 'btk') {
-      const labels = ['İletişim Güvenliği', 'Erişim Güvenliği', 'Veri Güvenliği'];
-      return `${labels[x] || 'Risk'}: ${Math.round(value * 100)}%`;
+      const severityLabels: Record<string, string> = {
+        low: 'İletişim Güvenliği',
+        medium: 'Erişim Güvenliği',
+        high: 'Veri Güvenliği',
+      };
+      return `${severityLabels[severity] || severity}: ${count} vaka`;
     }
     if (tenantId === 'eu_ai') {
-      const labels = ['Yüksek Risk Sınıfı', 'Kullanım Alanı', 'Uyumluluk'];
-      return `${labels[x] || 'Risk'}: ${Math.round(value * 100)}%`;
+      const severityLabels: Record<string, string> = {
+        low: 'Yüksek Risk Sınıfı',
+        medium: 'Kullanım Alanı',
+        high: 'Uyumluluk',
+      };
+      return `${severityLabels[severity] || severity}: ${count} vaka`;
     }
-    return defaultLabel || `Risk: ${Math.round(value * 100)}%`;
+    return `${severity}/${likelihood}: ${count} vaka`;
   };
-  // Generate 3x3 grid
-  const grid = Array.from({ length: 9 }, (_, i) => {
-    const x = Math.floor(i / 3);
-    const y = i % 3;
-    const item = data.find(d => d.x === x && d.y === y);
-    return item || { x, y, value: 0, label: '' };
-  });
 
-  const getColor = (value: number) => {
-    if (value >= 0.8) return 'bg-red-500';
-    if (value >= 0.6) return 'bg-orange-500';
-    if (value >= 0.4) return 'bg-yellow-500';
-    if (value >= 0.2) return 'bg-green-400';
+  const getColorClass = (severity: string, likelihood: string) => {
+    if (severity === 'high' || likelihood === 'high') {
+      return 'bg-red-500';
+    }
+    if (severity === 'medium' || likelihood === 'medium') {
+      return 'bg-yellow-500';
+    }
     return 'bg-green-500';
   };
+
+  const matrix = data.matrix || [];
+  const severityLevels = ['low', 'medium', 'high'];
+  const likelihoodLevels = ['low', 'medium', 'high'];
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Risk Matrisi</CardTitle>
+        <CardTitle>Risk Matrisi (3x3)</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-3 gap-2">
-          {grid.map((item, index) => (
-            <div
-              key={index}
-              className={cn(
-                'aspect-square rounded-lg flex items-center justify-center text-white text-xs font-semibold transition-all hover:scale-110 cursor-pointer',
-                getColor(item.value)
-              )}
-              title={getTenantLabel(item.x, item.y, item.value, item.label)}
-            >
-              {item.value > 0 ? Math.round(item.value * 100) : ''}
+        <div className="space-y-2">
+          <div className="grid grid-cols-4 gap-2 text-xs font-medium text-gray-600">
+            <div></div>
+            <div className="text-center">Düşük</div>
+            <div className="text-center">Orta</div>
+            <div className="text-center">Yüksek</div>
+          </div>
+          {severityLevels.map((severity, rowIdx) => (
+            <div key={severity} className="grid grid-cols-4 gap-2">
+              <div className="text-xs font-medium text-gray-600 flex items-center">
+                {severity === 'low' ? 'Düşük' : severity === 'medium' ? 'Orta' : 'Yüksek'}
+              </div>
+              {likelihoodLevels.map((likelihood, colIdx) => {
+                const cell = matrix[rowIdx]?.[colIdx];
+                const count = cell?.count || 0;
+                const percentage = cell?.percentage || 0;
+                return (
+                  <div
+                    key={`${severity}-${likelihood}`}
+                    className={cn(
+                      'p-3 rounded text-center text-white text-xs cursor-help transition-opacity hover:opacity-80',
+                      getColorClass(severity, likelihood),
+                      count === 0 && 'opacity-50'
+                    )}
+                    title={getTenantLabel(severity, likelihood, count)}
+                  >
+                    <div className="font-bold">{count}</div>
+                    <div className="text-xs opacity-90">{percentage.toFixed(1)}%</div>
+                  </div>
+                );
+              })}
             </div>
           ))}
+        </div>
+        <div className="mt-4 text-sm text-gray-600">
+          Toplam: <span className="font-semibold">{data.total_cases || 0}</span> vaka
         </div>
       </CardContent>
     </Card>
   );
 }
-

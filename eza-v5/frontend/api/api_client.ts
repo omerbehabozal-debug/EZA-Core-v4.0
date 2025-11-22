@@ -60,7 +60,7 @@ export async function apiRequest<T = any>(
 
     return await response.json();
   } catch (err) {
-    console.error("API Request Error:", err);
+    // Silent error handling - errors are handled by SWR with fallback data
     if (err instanceof Error) {
       throw err;
     }

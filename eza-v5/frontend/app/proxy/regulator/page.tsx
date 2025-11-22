@@ -12,10 +12,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/Card';
 import CaseTable from './components/CaseTable';
 import RiskMatrix from './components/RiskMatrix';
 import ScreeningPanel from './components/ScreeningPanel';
+import StatusBadge, { StatusType } from '@/components/StatusBadge';
 import { useTenantStore } from '@/lib/tenantStore';
-import { fetchRegulatorCases, fetchRegulatorRiskMatrix, fetchRegulatorAuditLogs } from '@/api/regulator';
-import { MOCK_REGULATOR_CASES, MOCK_REGULATOR_RISK_MATRIX, MOCK_REGULATOR_AUDIT_LOGS } from '@/mock/regulator';
-import type { RegulatorCase, RiskMatrixData, AuditLog } from '@/mock/regulator';
+import { fetchRegulatorCases, fetchRegulatorRiskMatrix, fetchRegulatorReports } from '@/api/regulator';
+import { MOCK_REGULATOR_CASES, MOCK_REGULATOR_RISK_MATRIX, MOCK_REGULATOR_REPORTS } from '@/mock/regulator';
+import type { RegulatorCase, RiskMatrixResponse, ReportResponse } from '@/mock/regulator';
 import { cn } from '@/lib/utils';
 import { getTenantTabClasses } from '@/lib/tenantColors';
 
@@ -23,8 +24,13 @@ const tabs = [
   { id: 'risk', label: 'Risk Sınıflandırma', module: 'risk_matrix' },
   { id: 'review', label: 'İçerik İnceleme Masası', module: 'case_table' },
   { id: 'reports', label: 'Uygunluk Raporları', module: 'reports' },
-  { id: 'audit', label: 'Audit Log', module: 'audit_log' },
 ];
+
+function getStatusType(isLoading: boolean, error: any, data: any, fallback: any): StatusType {
+  if (isLoading) return 'loading';
+  if (error || !data || data === fallback) return 'preview';
+  return 'live';
+}
 
 export default function RegulatorPage() {
   const router = useRouter();
@@ -32,7 +38,6 @@ export default function RegulatorPage() {
   const { setTenant, getTenant } = useTenantStore();
   const tenant = getTenant();
   
-  // Initialize tenant from URL
   useEffect(() => {
     const tenantParam = searchParams.get('tenant');
     if (tenantParam && tenantParam !== tenant.id) {
@@ -40,12 +45,10 @@ export default function RegulatorPage() {
     }
   }, [searchParams, tenant.id, setTenant]);
 
-  // Get active tab from URL or default to 'risk'
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState(tabParam || 'risk');
   const [selectedCase, setSelectedCase] = useState<RegulatorCase | null>(null);
 
-  // Update activeTab when URL changes
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab && tabs.find(t => t.id === tab)) {
@@ -53,41 +56,52 @@ export default function RegulatorPage() {
     }
   }, [searchParams]);
 
-  // SWR with hybrid mock + live backend
-  const { data: cases, error: casesError } = useSWR(
+  const { data: cases, error: casesError, isLoading: casesLoading } = useSWR(
     ['regulator-cases', tenant.id],
-    () => fetchRegulatorCases(tenant.id),
+    () => fetchRegulatorCases(),
     {
       fallbackData: MOCK_REGULATOR_CASES,
       revalidateOnMount: true,
       shouldRetryOnError: false,
       errorRetryCount: 0,
+      onError: () => {
+        console.info('[Preview Mode] Backend unavailable for cases');
+      },
     }
   );
 
-  const { data: riskMatrix, error: riskError } = useSWR(
+  const { data: riskMatrix, error: riskError, isLoading: riskLoading } = useSWR(
     ['regulator-risk-matrix', tenant.id],
-    () => fetchRegulatorRiskMatrix(tenant.id),
+    () => fetchRegulatorRiskMatrix(),
     {
       fallbackData: MOCK_REGULATOR_RISK_MATRIX,
       revalidateOnMount: true,
       shouldRetryOnError: false,
       errorRetryCount: 0,
+      onError: () => {
+        console.info('[Preview Mode] Backend unavailable for risk matrix');
+      },
     }
   );
 
-  const { data: auditLogs, error: auditError } = useSWR(
-    ['regulator-audit-logs', tenant.id],
-    () => fetchRegulatorAuditLogs(tenant.id),
+  const { data: reports, error: reportsError, isLoading: reportsLoading } = useSWR(
+    ['regulator-reports', tenant.id],
+    () => fetchRegulatorReports(),
     {
-      fallbackData: MOCK_REGULATOR_AUDIT_LOGS,
+      fallbackData: MOCK_REGULATOR_REPORTS,
       revalidateOnMount: true,
       shouldRetryOnError: false,
       errorRetryCount: 0,
+      onError: () => {
+        console.info('[Preview Mode] Backend unavailable for reports');
+      },
     }
   );
 
-  // Filter tabs based on enabled modules
+  const casesStatus = getStatusType(casesLoading, casesError, cases, MOCK_REGULATOR_CASES);
+  const riskStatus = getStatusType(riskLoading, riskError, riskMatrix, MOCK_REGULATOR_RISK_MATRIX);
+  const reportsStatus = getStatusType(reportsLoading, reportsError, reports, MOCK_REGULATOR_REPORTS);
+
   const availableTabs = tabs.filter(tab => tenant.enabledModules.includes(tab.module));
 
   const handleReview = (caseId: string) => {
@@ -97,21 +111,21 @@ export default function RegulatorPage() {
 
   const handleClose = () => setSelectedCase(null);
 
-
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className={cn('text-3xl font-semibold text-gray-900 mb-2')}>
-            {tenant.label}
-          </h1>
-          <p className="text-gray-600">
-            {tenant.description}
-          </p>
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className={cn('text-3xl font-semibold text-gray-900 mb-2')}>
+              {tenant.label}
+            </h1>
+            <p className="text-gray-600">
+              {tenant.description}
+            </p>
+          </div>
+          <StatusBadge status={casesStatus} />
         </div>
 
-        {/* Tabs */}
         <div className="border-b border-gray-200">
           <nav className="flex gap-6">
             {availableTabs.map((tab) => (
@@ -119,7 +133,6 @@ export default function RegulatorPage() {
                 key={tab.id}
                 onClick={() => {
                   setActiveTab(tab.id);
-                  // Update URL with tab parameter
                   const currentTenant = searchParams.get('tenant') || tenant.id;
                   router.push(`/proxy/regulator?tenant=${currentTenant}&tab=${tab.id}`);
                 }}
@@ -134,10 +147,12 @@ export default function RegulatorPage() {
           </nav>
         </div>
 
-        {/* Tab Content */}
         {activeTab === 'risk' && tenant.enabledModules.includes('risk_matrix') && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <RiskMatrix data={riskMatrix || MOCK_REGULATOR_RISK_MATRIX} tenantId={tenant.id} />
+            <RiskMatrix 
+              data={riskMatrix || MOCK_REGULATOR_RISK_MATRIX} 
+              tenantId={tenant.id} 
+            />
             <Card>
               <CardHeader>
                 <CardTitle>Risk İstatistikleri</CardTitle>
@@ -146,15 +161,19 @@ export default function RegulatorPage() {
                 <div className="space-y-4">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Toplam İçerik</span>
-                    <span className="font-semibold">1,234</span>
+                    <span className="font-semibold">{riskMatrix?.total_cases || 0}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Yüksek Risk</span>
-                    <span className="font-semibold text-red-600">45</span>
+                    <span className="font-semibold text-red-600">
+                      {riskMatrix?.summary.high_high || 0}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Orta Risk</span>
-                    <span className="font-semibold text-yellow-600">123</span>
+                    <span className="font-semibold text-yellow-600">
+                      {(riskMatrix?.summary.medium_medium || 0) + (riskMatrix?.summary.medium_high || 0)}
+                    </span>
                   </div>
                 </div>
               </CardContent>
@@ -182,72 +201,76 @@ export default function RegulatorPage() {
         {activeTab === 'reports' && tenant.enabledModules.includes('reports') && (
           <Card>
             <CardHeader>
-              <CardTitle>Uygunluk Raporları</CardTitle>
+              <div className="flex justify-between items-center">
+                <CardTitle>Uygunluk Raporları</CardTitle>
+                <StatusBadge status={reportsStatus} />
+              </div>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-600">Raporlar burada görüntülenecek</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab === 'audit' && tenant.enabledModules.includes('audit_log') && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Audit Log</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {auditLogs && auditLogs.length > 0 ? (
-                <div className="space-y-2">
-                  {auditLogs.map((log) => (
-                    <div key={log.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="text-sm font-medium text-gray-900">{log.action}</span>
-                        <span className="text-xs text-gray-500">{new Date(log.timestamp).toLocaleString('tr-TR')}</span>
+              {reports ? (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="font-semibold mb-2">Özet</h3>
+                    <p className="text-gray-600">{reports.content.summary}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">Öneriler</h3>
+                    <ul className="list-disc list-inside space-y-1 text-gray-600">
+                      {reports.content.recommendations.map((rec, idx) => (
+                        <li key={idx}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">İstatistikler</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <div className="text-2xl font-bold text-red-600">
+                          {reports.metadata.statistics.high_risk_count}
+                        </div>
+                        <div className="text-sm text-gray-600">Yüksek Risk</div>
                       </div>
-                      <p className="text-xs text-gray-600">{log.user}</p>
-                      <p className="text-sm text-gray-700 mt-1">{log.details}</p>
+                      <div>
+                        <div className="text-2xl font-bold text-yellow-600">
+                          {reports.metadata.statistics.medium_risk_count}
+                        </div>
+                        <div className="text-sm text-gray-600">Orta Risk</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-green-600">
+                          {reports.metadata.statistics.low_risk_count}
+                        </div>
+                        <div className="text-sm text-gray-600">Düşük Risk</div>
+                      </div>
                     </div>
-                  ))}
+                  </div>
                 </div>
               ) : (
                 <p className="text-gray-600 text-center py-8">
-                  Henüz veri yok. Önizleme verisi ile çalışan bir demo ortamı gösteriliyor.
+                  Rapor yükleniyor...
                 </p>
               )}
             </CardContent>
           </Card>
         )}
 
-        {/* Model Registry (EU AI only) */}
-        {tenant.id === 'eu_ai' && tenant.enabledModules.includes('model_registry') && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Model Registry</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600">EU AI Act model kayıt sistemi burada görüntülenecek</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Screening Panel */}
         <ScreeningPanel
           caseItem={selectedCase}
           onClose={handleClose}
           onApprove={(id) => {
-            console.info('[Mock Mode] Approve case:', id);
+            console.info('[Preview Mode] Approve case:', id);
             handleClose();
           }}
           onWarning={(id) => {
-            console.info('[Mock Mode] Warning case:', id);
+            console.info('[Preview Mode] Warning case:', id);
             handleClose();
           }}
           onRemove={(id) => {
-            console.info('[Mock Mode] Remove case:', id);
+            console.info('[Preview Mode] Remove case:', id);
             handleClose();
           }}
           onReport={(id) => {
-            console.info('[Mock Mode] Generate report for case:', id);
+            console.info('[Preview Mode] Generate report for case:', id);
             handleClose();
           }}
         />
@@ -255,4 +278,3 @@ export default function RegulatorPage() {
     </DashboardLayout>
   );
 }
-

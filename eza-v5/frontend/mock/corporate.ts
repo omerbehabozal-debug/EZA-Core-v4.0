@@ -2,9 +2,9 @@
  * Mock Corporate Data
  */
 
-import type { CorporateAudit } from '@/lib/types';
+import type { CorporateAudit, PolicyConfig } from '@/lib/types';
 
-export const MOCK_CORPORATE_AUDITS: CorporateAudit[] = [
+export const MOCK_CORPORATE_AUDIT: CorporateAudit[] = [
   {
     id: '1',
     ai_agent: 'Customer Support Bot',
@@ -34,3 +34,8 @@ export const MOCK_CORPORATE_AUDITS: CorporateAudit[] = [
   },
 ];
 
+export const MOCK_CORPORATE_POLICY: PolicyConfig = {
+  high_risk_topics: ['financial_advice', 'medical_diagnosis', 'legal_opinion'],
+  illegal_use_cases: ['fraud', 'harassment', 'discrimination'],
+  custom_rules: ['no_personal_data_sharing', 'require_human_review_for_high_risk'],
+};

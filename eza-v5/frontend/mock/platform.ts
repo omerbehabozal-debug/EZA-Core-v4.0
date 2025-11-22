@@ -22,18 +22,18 @@ export const MOCK_PLATFORM_API_KEYS: ApiKey[] = [
   },
 ];
 
-export const MOCK_PLATFORM_CONTENT: ContentItem[] = [
+export const MOCK_PLATFORM_STREAM: ContentItem[] = [
   {
-    id: '1',
+    id: 'stream_1',
     content: 'Sample content for moderation...',
-    score: 75,
+    score: 0.75,
     risk_level: 'medium',
     timestamp: new Date().toISOString(),
   },
   {
-    id: '2',
+    id: 'stream_2',
     content: 'Another content item requiring review...',
-    score: 45,
+    score: 0.45,
     risk_level: 'high',
     timestamp: new Date().toISOString(),
   },
@@ -50,4 +50,3 @@ export const MOCK_PLATFORM_TREND: TrendData[] = [
   { hour: 12, risk: 0.8 },
   { hour: 18, risk: 0.5 },
 ];
-
