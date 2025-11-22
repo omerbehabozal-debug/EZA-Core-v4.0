@@ -1,77 +1,97 @@
 /**
- * Proxy-Lite Page
+ * Proxy-Lite Page - Hybrid Mock + Real Backend System
  */
 
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { analyzeProxyLite } from '@/api/proxy_lite';
-import InputBox from './components/InputBox';
-import ResultCard from './components/ResultCard';
-import { ProxyLiteResult } from '@/lib/types';
+import { useState } from "react";
+import useSWR from "swr";
+import { analyzeLiteReal, ProxyLiteRealResult } from "@/api/proxy_lite";
+import { MOCK_LITE_RESULT } from "@/mock/proxy_lite";
+import StatusBadge from "@/components/StatusBadge";
 
 export default function ProxyLitePage() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<ProxyLiteResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [analyzeKey, setAnalyzeKey] = useState<string | null>(null);
 
-  const handleAnalyze = async (text: string) => {
-    setIsLoading(true);
-    setError(null);
-    setResult(null);
+  const { data, isValidating, mutate } = useSWR<ProxyLiteRealResult>(
+    analyzeKey ? ["proxy-lite", analyzeKey] : null,
+    async () => {
+      const realResult = await analyzeLiteReal(analyzeKey!);
+      return realResult ?? MOCK_LITE_RESULT;
+    },
+    {
+      fallbackData: MOCK_LITE_RESULT,
+      revalidateOnFocus: false,
+      shouldRetryOnError: false,
+    }
+  );
 
-    try {
-      // For proxy-lite, we need both input and output
-      // For now, using the same text for both (can be improved)
-      const response = await analyzeProxyLite(text, text);
-      
-      // Calculate score from risk level
-      const scoreMap = {
-        low: 85,
-        medium: 65,
-        high: 40,
-        critical: 20,
-      };
-      
-      setResult({
-        ...response,
-        score: scoreMap[response.risk_level as keyof typeof scoreMap] || 50,
-      });
-    } catch (err: any) {
-      setError(err.message || 'Analiz sırasında bir hata oluştu.');
-    } finally {
-      setIsLoading(false);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (text.trim()) {
+      // Önce mock göster, sonra gerçek API isteğini tetikle
+      setAnalyzeKey(text.trim());
+      mutate(); // gerçek API isteğini tetikle
     }
   };
 
+  const result = data ?? MOCK_LITE_RESULT;
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        {/* Hero Section */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-semibold text-gray-900 mb-4">
-            EZA Proxy-Lite
-          </h1>
-          <p className="text-lg text-gray-600">
-            Hızlı ve temel etik kontrol.
-          </p>
+    <div className="px-4 md:px-10 py-10 max-w-4xl mx-auto">
+      <h1 className="text-center text-3xl font-bold">EZA Proxy-Lite</h1>
+      <p className="text-center text-gray-500 mb-8">Hızlı ve temel etik kontrol.</p>
+
+      <form onSubmit={handleSubmit}>
+        <textarea 
+          className="w-full border rounded-lg p-4"
+          placeholder="Analiz etmek istediğiniz içeriği yazın..."
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+
+        <button 
+          type="submit"
+          className="mt-4 w-full bg-blue-600 text-white font-semibold rounded-lg p-3"
+          disabled={!text.trim() || isValidating}
+        >
+          {isValidating ? "Analiz Ediliyor..." : "Analiz Et"}
+        </button>
+      </form>
+
+      {/* Status - Only show when analysis is triggered */}
+      {analyzeKey && (
+        <div className="mt-6">
+          <StatusBadge
+            loading={isValidating}
+            live={data?.live}
+          />
         </div>
+      )}
 
-        {/* Input Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 mb-8">
-          <InputBox onSubmit={handleAnalyze} isLoading={isLoading} />
+      {/* Result - Only show when analysis is triggered */}
+      {analyzeKey && (
+        <div className="mt-6 bg-white shadow p-6 rounded-xl">
+          <h2 className="font-semibold mb-4 text-lg">Analiz Sonucu</h2>
+
+          <p className="text-4xl font-bold">{result.risk_score}</p>
+          <p className="text-gray-600 capitalize">{result.risk_level} risk</p>
+
+          <p className="mt-4 text-gray-700">{result.output}</p>
+
+          {result.flags && result.flags.length > 0 && (
+            <div className="mt-4">
+              <h3 className="font-semibold text-sm mb-2">Risk Flags:</h3>
+              <ul className="list-disc list-inside text-sm text-gray-600">
+                {result.flags.map((flag, idx) => (
+                  <li key={idx}>{flag}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-8">
-            <p className="text-sm text-red-700">{error}</p>
-          </div>
-        )}
-
-        {/* Result Section */}
-        {result && <ResultCard result={result} />}
-      </div>
+      )}
     </div>
   );
 }
